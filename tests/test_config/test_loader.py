@@ -29,13 +29,15 @@ llm:
     model: "gpt-3.5-turbo"
 """
         config_file.write_text(config_content)
-        
+
         loader = ConfigLoader()
         config = loader.load_from_file(str(config_file))
-        
+
         assert isinstance(config, YgentsConfig)
         assert len(config.mcp_servers) == 2
-        assert config.mcp_servers["weather"].url == "https://weather-api.example.com/mcp"
+        assert (
+            config.mcp_servers["weather"].url == "https://weather-api.example.com/mcp"
+        )
         assert config.mcp_servers["assistant"].command == "python"
         assert config.llm.provider == "openai"
         assert config.llm.openai.api_key == "test-openai-key"
@@ -51,14 +53,14 @@ llm:
     model: "gpt-3.5-turbo"
 """
         config_file.write_text(config_content)
-        
+
         # Set environment variable
         os.environ["OPENAI_API_KEY"] = "env-openai-key"
-        
+
         try:
             loader = ConfigLoader()
             config = loader.load_from_file(str(config_file))
-            
+
             # Environment variable should override YAML value
             assert config.llm.openai.api_key == "env-openai-key"
         finally:
@@ -76,10 +78,10 @@ llm:
     model: "claude-3-sonnet-20240229"
 """
         config_file.write_text(config_content)
-        
+
         loader = ConfigLoader()
         config = loader.load_from_file(str(config_file))
-        
+
         assert config.llm.provider == "claude"
         assert config.llm.claude.api_key == "test-claude-key"
         assert config.llm.claude.model == "claude-3-sonnet-20240229"
@@ -94,7 +96,7 @@ mcpServers:
     command: "python"
 """
         config_file.write_text(config_content)
-        
+
         loader = ConfigLoader()
         with pytest.raises(ValueError, match="validation error"):
             loader.load_from_file(str(config_file))
@@ -107,7 +109,7 @@ llm:
   provider: "invalid_provider"
 """
         config_file.write_text(config_content)
-        
+
         loader = ConfigLoader()
         with pytest.raises(ValueError, match="validation error"):
             loader.load_from_file(str(config_file))
@@ -127,7 +129,7 @@ invalid: yaml: content:
     proper: indentation
 """
         config_file.write_text(config_content)
-        
+
         loader = ConfigLoader()
         with pytest.raises(ValueError, match="Invalid YAML"):
             loader.load_from_file(str(config_file))
@@ -143,34 +145,26 @@ llm:
     # model not specified - should use default
 """
         config_file.write_text(config_content)
-        
+
         loader = ConfigLoader()
         config = loader.load_from_file(str(config_file))
-        
+
         # Default model should be applied
         assert config.llm.openai.model == "gpt-3.5-turbo"
 
     def test_load_from_dict(self, clean_env):
         """Test loading config from dictionary."""
         config_dict = {
-            "mcpServers": {
-                "test": {
-                    "command": "python",
-                    "args": ["test.py"]
-                }
-            },
+            "mcpServers": {"test": {"command": "python", "args": ["test.py"]}},
             "llm": {
                 "provider": "openai",
-                "openai": {
-                    "api_key": "test-key",
-                    "model": "gpt-4"
-                }
-            }
+                "openai": {"api_key": "test-key", "model": "gpt-4"},
+            },
         }
-        
+
         loader = ConfigLoader()
         config = loader.load_from_dict(config_dict)
-        
+
         assert isinstance(config, YgentsConfig)
         assert config.mcp_servers["test"].command == "python"
         assert config.llm.openai.model == "gpt-4"
