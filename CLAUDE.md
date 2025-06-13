@@ -8,10 +8,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Commands
 
-TBD - プロジェクトの実装が開始されたら以下のコマンドを更新してください：
-- Build/Install commands
-- Test execution commands  
-- Linting commands
+### 環境セットアップ
+```bash
+# 仮想環境の作成・アクティベート
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# 開発用インストール
+pip install -e ".[dev]"
+```
+
+### テスト・品質チェック
+```bash
+# 仮想環境をアクティベートしてから実行
+source .venv/bin/activate
+
+# テスト実行
+pytest tests/ -v
+
+# コードフォーマット
+black src tests
+isort src tests
+
+# 型チェック
+mypy src
+
+# リンティング
+flake8 src tests
+```
 
 ## Architecture
 
