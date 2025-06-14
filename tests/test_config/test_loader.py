@@ -36,7 +36,8 @@ llm:
         assert isinstance(config, YgentsConfig)
         assert len(config.mcp_servers) == 2
         assert (
-            config.mcp_servers["weather"]["url"] == "https://weather-api.example.com/mcp"
+            config.mcp_servers["weather"]["url"]
+            == "https://weather-api.example.com/mcp"
         )
         assert config.mcp_servers["assistant"]["command"] == "python"
         assert config.llm.provider == "openai"
