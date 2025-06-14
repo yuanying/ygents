@@ -29,17 +29,17 @@ ygents/
 │   ├── __init__.py
 │   ├── config/
 │   ├── mcp/
-│   ├── llm/
-│   ├── agent/
+│   ├── agent/        # LiteLLMを直接利用
 │   └── cli/
 ├── tests/
 │   ├── conftest.py
 │   ├── test_config/
 │   ├── test_mcp/
-│   ├── test_llm/
-│   ├── test_agent/
+│   ├── test_agent/   # LiteLLM統合テスト含む
 │   └── test_cli/
 ```
+
+**注意**: `src/ygents/llm/` および `tests/test_llm/` は作成しません（LiteLLM直接利用）
 
 #### 1.2 設定管理モジュール（TDD）
 
@@ -92,32 +92,19 @@ def test_reconnection_logic():
 4. 接続機能実装
 5. 実装コミット
 
-### フェーズ3: LLMインターフェース（TDD）
+### フェーズ3: LLMインターフェース（簡素化）
 
-#### 3.1 LLM統合
+#### 3.1 LiteLLM直接利用
 
-**テスト作成:**
-```python
-# tests/test_llm/test_interface.py
-def test_openai_provider_integration():
-    """OpenAIプロバイダー統合テスト"""
-    
-def test_claude_provider_integration():
-    """Claudeプロバイダー統合テスト"""
-    
-def test_llm_response_processing():
-    """LLMレスポンス処理テスト"""
-    
-def test_api_error_handling():
-    """API エラーハンドリングテスト"""
-```
+**アプローチ変更:**
+- 独自のLLMインターフェースモジュールは実装せず
+- LiteLLMを直接利用してシンプルな設計に変更
+- エージェントロジック内でlitellm.completion()を直接呼び出し
 
-**実装順序:**
-1. LLMレスポンスモックの作成
-2. 統合テスト作成・実行（失敗）
-3. テストコミット
-4. litellm統合実装
-5. 実装コミット
+**実装内容:**
+- `src/ygents/llm/` モジュールは作成しない
+- 設定で指定されたプロバイダー情報をlitellmに直接渡す
+- エラーハンドリングはlitellmの例外をそのまま利用
 
 ### フェーズ4: エージェント中核ロジック（TDD）
 
@@ -133,7 +120,7 @@ def test_task_planning():
     """タスク計画生成テスト"""
     
 def test_mcp_llm_coordination():
-    """MCP-LLM協調テスト"""
+    """MCP-LLM協調テスト（litellm直接利用）"""
     
 def test_execution_flow():
     """実行フロー管理テスト"""
@@ -143,7 +130,7 @@ def test_execution_flow():
 1. エージェント動作シナリオ定義
 2. 統合テスト作成・実行（失敗）
 3. テストコミット
-4. エージェントロジック実装
+4. エージェントロジック実装（litellm統合）
 5. 実装コミット
 
 ### フェーズ5: CLI（TDD）
@@ -185,13 +172,14 @@ def test_error_display():
 - MCP接続テスト作成・実装
 - 通信エラーハンドリングテスト
 
-**週4: LLMテスト**
-- LLM統合テスト作成・実装
-- レスポンス処理テスト
+**週4: エージェント統合**
+- LiteLLM直接統合
+- エージェントロジック開始
 
 **週5-6: エージェントテスト**
 - エージェントロジックテスト作成・実装
-- 統合フローテスト
+- LiteLLM統合テスト
+- MCP-LLM協調フローテスト
 
 **週7: CLIテスト**
 - CLIテスト作成・実装
