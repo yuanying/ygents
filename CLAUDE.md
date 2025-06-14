@@ -6,6 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **ygents** は LLM powered エージェントプロジェクトです。登録されたMCPサーバーを実行し、ユーザーの要求を解決するCLIを提供します。
 
+## 開発の進め方
+
+- **開発言語**: Python
+- **開発方針**:
+  - 設計ドキュメントを `design/` ディレクトリに配置。
+  - テスト駆動開発（TDD）を実践。
+
 ## Development Commands
 
 ### 環境セットアップ
