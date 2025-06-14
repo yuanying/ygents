@@ -33,27 +33,26 @@ graph TD
 
 ```python
 YgentsConfig
-├── mcp_servers: Dict[str, MCPServerConfig]
+├── mcp_servers: Dict[str, Dict[str, Any]]  # FastMCP形式の生辞書
 └── llm: LLMConfig
     ├── provider: Literal["openai", "claude"]
     ├── openai: Optional[OpenAIConfig]
     └── claude: Optional[ClaudeConfig]
 ```
 
-### MCPServerConfig
+### MCPサーバー設定（生辞書形式）
 
-MCP（Model Context Protocol）サーバーの設定を管理します。
+MCP（Model Context Protocol）サーバーの設定を、FastMCPライブラリが期待する形式の生辞書で管理します。バリデーションはFastMCPライブラリに委譲することで、設定形式の互換性を保ちつつ実装を簡素化します。
 
 ```python
-class MCPServerConfig(BaseModel):
-    url: Optional[str] = None        # HTTPSサーバーURL
-    command: Optional[str] = None    # ローカル実行コマンド
-    args: List[str] = []            # コマンド引数
+# MCPサーバー設定の型定義（型ヒント用）
+MCPServerConfig = Dict[str, Any]
 ```
 
-**バリデーションルール:**
-- `url` または `command` のいずれか一つが必須
-- 両方が指定された場合はエラー
+**FastMCP対応形式:**
+- **HTTPサーバー**: `{"url": "https://..."}`
+- **ローカルプロセス**: `{"command": "python", "args": ["script.py"]}`
+- **その他**: FastMCPが対応する任意の形式
 
 **使用例:**
 ```yaml
@@ -63,7 +62,17 @@ mcpServers:
   local_assistant:
     command: "python"
     args: ["./assistant_server.py", "--port", "8080"]
+  advanced_server:
+    command: "node"
+    args: ["server.js"]
+    env:
+      DEBUG: "true"
 ```
+
+**バリデーション方針:**
+- 設定の構文チェックのみYAML読み込み時に実施
+- 意味的バリデーション（url/command必須など）はFastMCPに委譲
+- エラーはFastMCP接続時に表面化、詳細なエラーメッセージを提供
 
 ### LLM設定
 
@@ -187,26 +196,30 @@ export ANTHROPIC_API_KEY="env-override-key"
 ```
 tests/test_config/
 ├── __init__.py
-├── test_models.py    # データモデルテスト（17テストケース）
-└── test_loader.py    # ローダーテスト（9テストケース）
+├── test_models.py    # データモデルテスト（12テストケース）
+└── test_loader.py    # ローダーテスト（8テストケース）
 ```
 
 ### テスト範囲
 
-**合計26テストケース、95%カバレッジ**
+**合計20テストケース、95%カバレッジ**
 
 #### モデルテスト (test_models.py)
-- MCPServerConfig: URL/コマンド形式、バリデーション
 - OpenAIConfig/ClaudeConfig: 必須フィールド、デフォルト値
 - LLMConfig: プロバイダー検証、設定整合性
-- YgentsConfig: 全体設定の統合
+- YgentsConfig: 全体設定の統合（MCP設定は生辞書として扱う）
 
 #### ローダーテスト (test_loader.py)
 - YAML読み込み: 基本形式、各プロバイダー
 - 環境変数上書き: API key上書き動作
-- エラーハンドリング: ファイル不存在、YAML構文エラー、検証エラー
+- エラーハンドリング: ファイル不存在、YAML構文エラー
 - デフォルト値適用
 - 辞書形式読み込み
+
+**簡素化された点:**
+- MCPServerConfigのバリデーションテストを削除（FastMCPに委譲）
+- 設定検証エラーテストを削除（FastMCP接続時にチェック）
+- テストケース数を26→20に削減
 
 ### テストFixture
 
