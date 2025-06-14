@@ -40,7 +40,7 @@ FastMCPのMulti-Server Clients機能をラップして、設定ファイルベ�
 class MCPClient:
     """FastMCP Multi-Server Clientのラッパー"""
     
-    def __init__(self, servers_config: Dict[str, MCPServerConfig])
+    def __init__(self, servers_config: Dict[str, Dict[str, Any]])
     async def execute_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> List[Any]
     async def list_tools(self, server_name: str = None) -> Union[List[Tool], Dict[str, List[Tool]]]
     async def list_resources(self, server_name: str = None) -> Union[List[Resource], Dict[str, List[Resource]]]
@@ -50,10 +50,10 @@ class MCPClient:
 ```
 
 **主要機能:**
-- MCPServerConfig → MCPConfig形式の変換
+- 生辞書形式のMCP設定をFastMCPにそのまま渡す
 - FastMCPのプレフィックス付きツール名の管理
 - エージェント向けの簡潔なインターフェース
-- 統一されたエラーハンドリング
+- 統一されたエラーハンドリング（バリデーションはFastMCPに委譲）
 
 ### FastMCP Multi-Server Clientsの活用
 
@@ -107,41 +107,42 @@ class MCPTimeoutError(MCPException):
 
 ## 設定とライフサイクル
 
-### サーバー設定変換
+### サーバー設定（生辞書形式）
 
-既存の`MCPServerConfig`をFastMCPのMCPConfig形式に変換：
+MCPサーバー設定を生辞書として直接管理し、FastMCPにそのまま渡します：
 
 ```python
-def convert_to_mcp_config(servers_config: Dict[str, MCPServerConfig]) -> dict:
-    """MCPServerConfig → FastMCP MCPConfig形式に変換"""
-    mcp_servers = {}
-    
-    for server_name, config in servers_config.items():
-        if config.url:
-            mcp_servers[server_name] = {"url": config.url}
-        elif config.command:
-            mcp_servers[server_name] = {
-                "command": config.command,
-                "args": config.args
-            }
-    
-    return {"mcpServers": mcp_servers}
+def create_mcp_config(servers_config: Dict[str, Dict[str, Any]]) -> dict:
+    """生辞書形式のMCP設定をFastMCPConfig形式にラップ"""
+    return {"mcpServers": servers_config}
 
-# 設定例
+# 設定例（生辞書形式）
 servers_config = {
-    "weather": MCPServerConfig(url="https://weather-api.example.com/mcp"),
-    "assistant": MCPServerConfig(command="python", args=["./assistant_server.py"])
+    "weather": {"url": "https://weather-api.example.com/mcp"},
+    "assistant": {"command": "python", "args": ["./assistant_server.py"]},
+    "advanced": {
+        "command": "node", 
+        "args": ["server.js"],
+        "env": {"DEBUG": "true"}
+    }
 }
 
-# 変換後のMCPConfig
-mcp_config = convert_to_mcp_config(servers_config)
+# FastMCPConfig形式
+mcp_config = create_mcp_config(servers_config)
 # {
 #   "mcpServers": {
 #     "weather": {"url": "https://weather-api.example.com/mcp"},
-#     "assistant": {"command": "python", "args": ["./assistant_server.py"]}
+#     "assistant": {"command": "python", "args": ["./assistant_server.py"]},
+#     "advanced": {"command": "node", "args": ["server.js"], "env": {"DEBUG": "true"}}
 #   }
 # }
 ```
+
+**簡素化のメリット:**
+- Pydanticモデルによる中間変換レイヤーを削除
+- FastMCPが対応する全ての設定オプションを自動的にサポート
+- バリデーションエラーはFastMCP接続時に自然に発生
+- 設定形式の進化にFastMCPと同期して自動追従
 
 ### ライフサイクル管理
 
@@ -210,28 +211,31 @@ FastMCPライブラリが自動的に処理する機能：
 tests/test_mcp/
 ├── __init__.py
 ├── conftest.py            # MCPテスト用Fixture
-├── test_client.py         # MCPClientテスト（12テストケース）
-└── test_exceptions.py     # 例外処理テスト（3テストケース）
+├── test_client.py         # MCPClientテスト（8テストケース）
+└── test_exceptions.py     # 例外処理テスト（2テストケース）
 ```
 
 ### テスト範囲
 
-**合計15テストケース、95%カバレッジ目標**
+**合計10テストケース、95%カバレッジ目標**
 
-FastMCP Multi-Server Clientが大部分の機能を提供するため、テストは設定変換とインターフェースに集中：
+FastMCP Multi-Server Clientが大部分の機能を提供し、バリデーションも委譲するため、テストは最小限のインターフェースに集中：
 
 #### MCPClientテスト (test_client.py)
-- MCPServerConfig → MCPConfig変換の正確性
+- 生辞書設定 → FastMCPConfig形式の単純ラップ
 - プレフィックス付きツール実行（server_name + tool_name → prefixed_tool_name）
 - ツール一覧取得（個別サーバー・全サーバー）
-- リソース操作とURI処理
 - Context Managerの動作
 - 接続状態管理
 
 #### 例外処理テスト (test_exceptions.py)
 - FastMCP例外のラッピング
 - カスタム例外の発生
-- エラーメッセージの適切性
+
+**大幅に削減されたテスト:**
+- 設定バリデーションテストを削除（FastMCPに委譲）
+- 複雑な設定変換テストを削除（単純なラップ処理のみ）
+- テストケース数を15→10に削減
 
 ### テストFixture
 
@@ -261,10 +265,10 @@ def mock_fastmcp_servers():
 
 @pytest.fixture
 def mcp_server_configs():
-    """テスト用サーバー設定"""
+    """テスト用サーバー設定（生辞書形式）"""
     return {
-        "weather": MCPServerConfig(url="https://test-weather.com/mcp"),
-        "assistant": MCPServerConfig(command="python", args=["assistant.py"])
+        "weather": {"url": "https://test-weather.com/mcp"},
+        "assistant": {"command": "python", "args": ["assistant.py"]}
     }
 
 @pytest.fixture
@@ -295,24 +299,26 @@ async def mcp_client(mock_fastmcp_servers):
 - タイムアウトとエラーハンドリング
 - 各トランスポートの自動推論
 
-**独自実装が必要な機能（最小限）:**
-- MCPServerConfig → MCPConfig形式変換
+**独自実装が必要な機能（極小限）:**
+- 生辞書形式設定 → FastMCPConfig形式の単純ラップ
 - エージェント向けインターフェース（server_name + tool_name の分離）
 - ygents固有のエラーラッピング
 
-### 設計の簡潔性
+### 設計の極度な簡潔性
 
-**従来の設計 vs Multi-Server Client活用後:**
+**従来の設計 vs 生辞書+FastMCP委譲後:**
 - **モジュール数**: 5ファイル → 2ファイル
 - **クラス数**: 複数クラス → 1つのラッパークラス
-- **テストケース**: 40テストケース → 15テストケース
-- **実装コード**: 数百行 → 数十行
+- **テストケース**: 40テストケース → 10テストケース
+- **実装コード**: 数百行 → 数十行（さらに削減）
+- **バリデーション**: 複雑なPydantic → FastMCPに完全委譲
 
 ### 保守性
 
-- **極薄ラッパー**: FastMCPの機能をほぼそのまま利用
-- **設定変換のみ**: MCPServerConfig ⇔ MCPConfig変換が主な責務
-- **FastMCP依存**: ライブラリの進化を直接享受
+- **透明プロキシ**: FastMCPの機能をほぼ透過的に利用
+- **設定形式同期**: FastMCP設定形式と完全同期
+- **ゼロ変換コスト**: 中間変換レイヤーを完全排除
+- **FastMCP依存**: ライブラリの全機能と進化を直接享受
 
 ## FastMCP Multi-Server Clientsの活用方針
 
@@ -320,16 +326,16 @@ async def mcp_client(mock_fastmcp_servers):
 
 ```python
 class MCPClient:
-    def __init__(self, servers_config: Dict[str, MCPServerConfig]):
-        # MCPConfig形式に変換
-        mcp_config = self._convert_to_mcp_config(servers_config)
+    def __init__(self, servers_config: Dict[str, Dict[str, Any]]):
+        # 生辞書をそのままFastMCPConfig形式にラップ
+        mcp_config = {"mcpServers": servers_config}
         # FastMCPのMulti-Server Clientを直接使用
         self._fastmcp_client = Client(mcp_config)
     
     async def execute_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]):
         # プレフィックス付きツール名を作成
         prefixed_tool_name = f"{server_name}_{tool_name}"
-        # FastMCPに委譲
+        # FastMCPに完全委譲
         return await self._fastmcp_client.call_tool(prefixed_tool_name, arguments)
 ```
 

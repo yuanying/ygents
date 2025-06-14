@@ -76,9 +76,9 @@ class ConfigLoader:
         normalized = {}
 
         for key, value in data.items():
-            # Convert mcpServers to mcp_servers
+            # Convert mcpServers to mcp_servers and keep as raw dict
             if key == "mcpServers":
-                normalized["mcp_servers"] = value
+                normalized["mcp_servers"] = value  # Keep as raw dict for FastMCP
             else:
                 normalized[key] = value
 

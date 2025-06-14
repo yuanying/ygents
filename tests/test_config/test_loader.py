@@ -36,9 +36,10 @@ llm:
         assert isinstance(config, YgentsConfig)
         assert len(config.mcp_servers) == 2
         assert (
-            config.mcp_servers["weather"].url == "https://weather-api.example.com/mcp"
+            config.mcp_servers["weather"]["url"]
+            == "https://weather-api.example.com/mcp"
         )
-        assert config.mcp_servers["assistant"].command == "python"
+        assert config.mcp_servers["assistant"]["command"] == "python"
         assert config.llm.provider == "openai"
         assert config.llm.openai.api_key == "test-openai-key"
 
@@ -87,13 +88,13 @@ llm:
         assert config.llm.claude.model == "claude-3-sonnet-20240229"
 
     def test_config_validation_missing_required_fields(self, temp_dir):
-        """Test config validation with missing required fields."""
+        """Test config validation with missing LLM config (MCP validation delegated to FastMCP)."""
         config_file = temp_dir / "config.yaml"
         config_content = """
 mcpServers:
   weather:
-    # Missing url
-    command: "python"
+    url: "https://weather-api.example.com/mcp"
+# Missing required llm section
 """
         config_file.write_text(config_content)
 
@@ -166,5 +167,5 @@ llm:
         config = loader.load_from_dict(config_dict)
 
         assert isinstance(config, YgentsConfig)
-        assert config.mcp_servers["test"].command == "python"
+        assert config.mcp_servers["test"]["command"] == "python"
         assert config.llm.openai.model == "gpt-4"
