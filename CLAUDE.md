@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **開発言語**: Python
 - **開発方針**:
+  - 新しい機能開発やバグ修正を行う際にはまず新しくブランチを作成する。
   - 設計ドキュメントを `design/` ディレクトリに配置。
   - テスト駆動開発（TDD）を実践。
 

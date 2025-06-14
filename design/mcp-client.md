@@ -1,63 +1,91 @@
-# MCPクライアントモジュール設計ドキュメント
+# MCP統合設計ドキュメント（簡素化方針）
 
 ## 概要
 
-ygentsプロジェクトのMCPクライアントモジュールは、Model Context Protocol (MCP) サーバーとの通信を管理し、エージェントがMCPサーバーの機能を利用できるようにします。FastMCPライブラリのMulti-Server Clients機能（v2.4.0+）を活用して、設定ファイルからMCPConfig形式への変換とエージェント向けの統一インターフェースを提供します。
+ygentsプロジェクトのMCP統合は、独自のMCPクライアントモジュールを実装せず、FastMCPライブラリを直接利用する簡素化された設計を採用します。エージェント内でFastMCPのMulti-Server Clients機能を直接使用し、実装の複雑性を大幅に削減します。
+
+## 設計方針の変更
+
+### 従来の設計（実装中止）
+- 独自のMCPクライアントモジュール（`src/ygents/mcp/`）
+- MCPClient ラッパークラス
+- 独自の例外ハンドリングシステム
+- エージェント向けの抽象化レイヤー
+
+### 新設計（FastMCP直接利用）
+- `src/ygents/mcp/` モジュールは作成しない
+- FastMCPの `Client` クラスを直接利用
+- 設定からFastMCPConfigを直接生成
+- FastMCPの例外処理をそのまま利用
 
 ## アーキテクチャ
 
 ### モジュール構成
 
 ```
-src/ygents/mcp/
-├── __init__.py         # パブリックAPI
-├── client.py           # MCPClient（設定変換とインターフェース）
-└── exceptions.py       # MCP専用例外
+src/ygents/
+├── config/             # 設定管理（MCP設定含む）
+├── agent/              # エージェント中核ロジック（FastMCP直接利用）
+└── cli/                # CLIインターフェース
 ```
+
+**注意**: `src/ygents/mcp/` モジュールは作成しません。
 
 ### データフロー
 
 ```mermaid
 graph TD
-    A[エージェント] --> B[MCPClient]
-    B --> C[FastMCP Multi-Server Client]
-    C --> D[Server: weather]
-    C --> E[Server: assistant]
-    C --> F[Server: tools]
+    A[エージェント] --> B[fastmcp.Client]
+    B --> C[Server: weather]
+    B --> D[Server: assistant]
+    B --> E[Server: tools]
     
-    J[YgentsConfig] --> K[MCPServerConfig]
-    K --> L[MCPConfig変換]
-    L --> C
+    F[YgentsConfig] --> G[mcp_servers dict]
+    G --> H[FastMCP Config]
+    H --> B
 ```
 
-## MCPクライアントアーキテクチャ
+## 実装方針
 
-### MCPClient
+### FastMCP直接利用
 
-FastMCPのMulti-Server Clients機能をラップして、設定ファイルベースの統合管理を提供します。
+エージェント内でFastMCPのClientクラスを直接使用します：
 
 ```python
-class MCPClient:
-    """FastMCP Multi-Server Clientのラッパー"""
+# src/ygents/agent/core.py（実装予定）
+import fastmcp
+from ..config.models import YgentsConfig
+
+class Agent:
+    def __init__(self, config: YgentsConfig):
+        self.config = config
+        self._mcp_client = None
     
-    def __init__(self, servers_config: Dict[str, Dict[str, Any]])
-    async def execute_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> List[Any]
-    async def list_tools(self, server_name: str = None) -> Union[List[Tool], Dict[str, List[Tool]]]
-    async def list_resources(self, server_name: str = None) -> Union[List[Resource], Dict[str, List[Resource]]]
-    async def read_resource(self, uri: str) -> List[Any]
-    def is_connected(self) -> bool
-    async def close(self) -> None
+    async def _get_mcp_client(self) -> fastmcp.Client:
+        """FastMCPクライアントを取得"""
+        if self._mcp_client is None:
+            mcp_config = {"mcpServers": self.config.mcp_servers}
+            self._mcp_client = fastmcp.Client(mcp_config)
+        return self._mcp_client
+    
+    async def execute_mcp_tool(self, server_name: str, tool_name: str, arguments: dict):
+        """MCPツールを実行"""
+        client = await self._get_mcp_client()
+        async with client:
+            # FastMCPが自動的にプレフィックス付きツール名にルーティング
+            prefixed_tool_name = f"{server_name}_{tool_name}"
+            return await client.call_tool(prefixed_tool_name, arguments)
 ```
 
-**主要機能:**
-- 生辞書形式のMCP設定をFastMCPにそのまま渡す
-- FastMCPのプレフィックス付きツール名の管理
-- エージェント向けの簡潔なインターフェース
-- 統一されたエラーハンドリング（バリデーションはFastMCPに委譲）
+**簡素化のメリット:**
+- 独自のMCPClientラッパークラスが不要
+- FastMCPの全機能を直接享受
+- 設定変換レイヤーの削除
+- テストケースの大幅削減
 
 ### FastMCP Multi-Server Clientsの活用
 
-FastMCPライブラリのMulti-Server Clients機能が自動的に処理：
+FastMCPライブラリのMulti-Server Clients機能をそのまま活用：
 
 **自動管理機能:**
 - 複数サーバーの接続管理
@@ -67,7 +95,7 @@ FastMCPライブラリのMulti-Server Clients機能が自動的に処理：
 
 **使用例:**
 ```python
-# FastMCP Multi-Server Client の機能
+# エージェント内でのFastMCP直接利用
 config = {
     "mcpServers": {
         "weather": {"url": "https://weather-api.example.com/mcp"},
@@ -75,7 +103,7 @@ config = {
     }
 }
 
-client = Client(config)
+client = fastmcp.Client(config)
 async with client:
     # 自動的にweather_get_forecastにルーティング
     weather_data = await client.call_tool("weather_get_forecast", {"city": "Tokyo"})
@@ -85,50 +113,54 @@ async with client:
 
 ### エラーハンドリング
 
-FastMCPの例外をygents向けにラップします。
+FastMCPの例外をそのまま利用：
 
 ```python
-class MCPException(Exception):
-    """MCP 基底例外"""
-    pass
+import fastmcp
+from fastmcp.exceptions import ClientError, ConnectionError
 
-class MCPConnectionError(MCPException):
-    """接続エラー（fastmcp.ConnectionError をラップ）"""
-    pass
-
-class MCPToolError(MCPException):
-    """ツール実行エラー（fastmcp.ClientError をラップ）"""
-    pass
-
-class MCPTimeoutError(MCPException):
-    """タイムアウトエラー"""
-    pass
+try:
+    result = await client.call_tool("weather_get_forecast", {"city": "Tokyo"})
+except ConnectionError as e:
+    # MCP接続エラー
+    raise e
+except ClientError as e:
+    # ツール実行エラー
+    raise e
+except Exception as e:
+    # その他のエラー
+    raise e
 ```
 
 ## 設定とライフサイクル
 
-### サーバー設定（生辞書形式）
+### サーバー設定（FastMCP直接利用）
 
-MCPサーバー設定を生辞書として直接管理し、FastMCPにそのまま渡します：
+設定管理モジュールからMCP設定を取得し、FastMCPに直接渡します：
 
 ```python
-def create_mcp_config(servers_config: Dict[str, Dict[str, Any]]) -> dict:
-    """生辞書形式のMCP設定をFastMCPConfig形式にラップ"""
-    return {"mcpServers": servers_config}
+# src/ygents/agent/core.py（実装予定）
+class Agent:
+    def _create_fastmcp_config(self) -> dict:
+        """YgentsConfigからFastMCPConfig形式を生成"""
+        return {"mcpServers": self.config.mcp_servers}
 
-# 設定例（生辞書形式）
-servers_config = {
-    "weather": {"url": "https://weather-api.example.com/mcp"},
-    "assistant": {"command": "python", "args": ["./assistant_server.py"]},
-    "advanced": {
-        "command": "node", 
-        "args": ["server.js"],
-        "env": {"DEBUG": "true"}
-    }
-}
+# 設定例（config.yaml）
+mcp_servers:
+  weather:
+    url: "https://weather-api.example.com/mcp"
+  assistant:
+    command: "python"
+    args: ["./assistant_server.py"]
+  advanced:
+    command: "node"
+    args: ["server.js"]
+    env:
+      DEBUG: "true"
 
-# FastMCPConfig形式
-mcp_config = create_mcp_config(servers_config)
+# エージェント内での利用
+agent = Agent(config)
+fastmcp_config = agent._create_fastmcp_config()
 # {
 #   "mcpServers": {
 #     "weather": {"url": "https://weather-api.example.com/mcp"},
@@ -139,112 +171,140 @@ mcp_config = create_mcp_config(servers_config)
 ```
 
 **簡素化のメリット:**
-- Pydanticモデルによる中間変換レイヤーを削除
-- FastMCPが対応する全ての設定オプションを自動的にサポート
-- バリデーションエラーはFastMCP接続時に自然に発生
-- 設定形式の進化にFastMCPと同期して自動追従
+- 独自のMCPClientクラスが不要
+- 設定変換が単純な辞書ラップのみ
+- FastMCPの全機能を直接享受
+- バリデーションはFastMCPに完全委譲
 
-### ライフサイクル管理
+### ライフサイクル管理（エージェントと同期）
+
+AgentのライフサイクルとMCPクライアントのライフサイクルを一致させます：
 
 ```python
-# 初期化とFastMCP Multi-Server Clientの作成
-client = MCPClient(servers_config)
+# エージェント内でのFastMCP永続接続管理
+class Agent:
+    def __init__(self, config: YgentsConfig):
+        self.config = config
+        self._mcp_client = None
+        self._mcp_client_connected = False
+    
+    async def __aenter__(self) -> "Agent":
+        """エージェント開始時にMCPクライアントも初期化"""
+        fastmcp_config = self._create_fastmcp_config()
+        self._mcp_client = fastmcp.Client(fastmcp_config)
+        await self._mcp_client.__aenter__()
+        self._mcp_client_connected = True
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """エージェント終了時にMCPクライアントも終了"""
+        if self._mcp_client and self._mcp_client_connected:
+            await self._mcp_client.__aexit__(exc_type, exc_val, exc_tb)
+            self._mcp_client_connected = False
+    
+    async def process_request(self, user_input: str):
+        """リクエスト処理（既存の接続を再利用）"""
+        if not self._mcp_client_connected:
+            raise RuntimeError("Agent not connected. Use 'async with agent:' pattern.")
+        
+        # 既存の接続を使ってツール実行
+        result = await self._mcp_client.call_tool("weather_get_forecast", {"city": "Tokyo"})
+        
+        # ツール一覧取得
+        tools = await self._mcp_client.list_tools()
+        
+        # リソース読み込み
+        resource = await self._mcp_client.read_resource("weather://data/forecast")
+        
+        return result
 
-# Context Managerによる接続管理
-async with client:
-    # FastMCPが自動的に全サーバーに接続
-    
-    # プレフィックス付きツール実行
-    result = await client.execute_tool("weather", "get_forecast", {"city": "Tokyo"})
-    # 内部的に "weather_get_forecast" として FastMCP に渡される
-    
-    # 全ツール一覧取得
-    all_tools = await client.list_tools()
-    # {"weather": [...], "assistant": [...]}
-    
-# with文を抜ける時に自動的に全接続が閉じられる
+# 使用例
+async def main():
+    config = load_config("config.yaml")
+    async with Agent(config) as agent:
+        # エージェント開始時に全MCPサーバーに接続
+        
+        # 複数リクエストで同じ接続を再利用
+        result1 = await agent.process_request("東京の天気は？")
+        result2 = await agent.process_request("大阪の天気は？")
+        result3 = await agent.process_request("明日の予報は？")
+        
+    # エージェント終了時に全接続が閉じられる
 ```
 
-## ツール実行フロー
+## ツール実行フロー（簡素化）
 
-### Multi-Server Client による統合実行フロー
+### FastMCP直接利用による実行フロー
 
 ```mermaid
 sequenceDiagram
     participant A as Agent
-    participant C as MCPClient
-    participant F as FastMCP Multi-Server Client
+    participant F as fastmcp.Client
     participant W as Weather Server
     participant AS as Assistant Server
     
-    A->>C: execute_tool("weather", "get_forecast", {...})
-    C->>F: call_tool("weather_get_forecast", {...})
+    A->>F: call_tool("weather_get_forecast", {...})
     F->>F: Route to weather server
     F->>W: JSON-RPC: tools/call
     W-->>F: Tool Result
-    F-->>C: Content List
-    C-->>A: Processed Result
+    F-->>A: Direct Result
     
-    A->>C: execute_tool("assistant", "answer", {...})
-    C->>F: call_tool("assistant_answer", {...})
+    A->>F: call_tool("assistant_answer", {...})
     F->>F: Route to assistant server
     F->>AS: JSON-RPC: tools/call
     AS-->>F: Tool Result
-    F-->>C: Content List
-    C-->>A: Processed Result
+    F-->>A: Direct Result
 ```
 
 ### FastMCP Multi-Server Clientによる自動処理
 
-FastMCPライブラリが自動的に処理する機能：
+FastMCPライブラリが自動的に処理する機能（独自実装不要）：
 - 複数サーバーへの接続確立と維持
 - ツール名プレフィックスによる自動ルーティング
 - プロトコルレベルのエラーハンドリング
 - タイムアウト管理と再接続ロジック
 - サーバー間での統一されたインターフェース
 
-## テスト設計
+## テスト戦略（削減）
 
-### テスト構成
+### 削減されるテスト
 
-```
-tests/test_mcp/
-├── __init__.py
-├── conftest.py            # MCPテスト用Fixture
-├── test_client.py         # MCPClientテスト（8テストケース）
-└── test_exceptions.py     # 例外処理テスト（2テストケース）
-```
+独自のMCPクライアントモジュールを実装しないため、以下のテストは不要：
 
-### テスト範囲
+- MCPClientクラスの単体テスト
+- 独自例外ハンドリングテスト
+- 設定変換テスト
+- ツール実行ラッパーテスト
+- 接続管理テスト
 
-**合計10テストケース、95%カバレッジ目標**
+### 必要なテスト
 
-FastMCP Multi-Server Clientが大部分の機能を提供し、バリデーションも委譲するため、テストは最小限のインターフェースに集中：
-
-#### MCPClientテスト (test_client.py)
-- 生辞書設定 → FastMCPConfig形式の単純ラップ
-- プレフィックス付きツール実行（server_name + tool_name → prefixed_tool_name）
-- ツール一覧取得（個別サーバー・全サーバー）
-- Context Managerの動作
-- 接続状態管理
-
-#### 例外処理テスト (test_exceptions.py)
-- FastMCP例外のラッピング
-- カスタム例外の発生
-
-**大幅に削減されたテスト:**
-- 設定バリデーションテストを削除（FastMCPに委譲）
-- 複雑な設定変換テストを削除（単純なラップ処理のみ）
-- テストケース数を15→10に削減
-
-### テストFixture
-
-FastMCPのin-memoryサーバーとMulti-Server Clientを活用：
+エージェントロジック内でのFastMCP統合テスト：
 
 ```python
+# tests/test_agent/test_mcp_integration.py
+@pytest.mark.asyncio
+async def test_fastmcp_integration(mock_mcp_servers):
+    """FastMCP統合テスト（in-memoryサーバー使用）"""
+    
+@pytest.mark.asyncio  
+async def test_mcp_tool_execution(mock_config):
+    """MCPツール実行テスト（FastMCPモック使用）"""
+
+@pytest.mark.asyncio
+async def test_mcp_error_handling():
+    """FastMCPエラーハンドリングテスト"""
+```
+
+### テストFixture（簡素化）
+
+エージェントテスト内でFastMCPのin-memoryサーバーを直接活用：
+
+```python
+# tests/test_agent/conftest.py
 @pytest.fixture
 def mock_fastmcp_servers():
-    """複数のFastMCPサーバーを作成"""
+    """FastMCPのin-memoryサーバーを作成"""
     from fastmcp import FastMCP
     
     weather_server = FastMCP(name="WeatherServer")
@@ -264,124 +324,208 @@ def mock_fastmcp_servers():
     }
 
 @pytest.fixture
-def mcp_server_configs():
-    """テスト用サーバー設定（生辞書形式）"""
-    return {
-        "weather": {"url": "https://test-weather.com/mcp"},
-        "assistant": {"command": "python", "args": ["assistant.py"]}
-    }
-
-@pytest.fixture
-async def mcp_client(mock_fastmcp_servers):
-    """テスト用MCPClient（FastMCPのin-memoryサーバー使用）"""
-    # Multi-Server Client でテスト
-    config = {
-        "mcpServers": {
+def mock_agent_config(mock_fastmcp_servers):
+    """テスト用エージェント設定"""
+    from ygents.config.models import YgentsConfig, LLMConfig, OpenAIConfig
+    
+    return YgentsConfig(
+        mcp_servers={
             "weather": mock_fastmcp_servers["weather"],
             "assistant": mock_fastmcp_servers["assistant"]
-        }
-    }
-    
-    client = MCPClient.from_fastmcp_config(config)
-    async with client:
-        yield client
+        },
+        llm=LLMConfig(
+            provider="openai",
+            openai=OpenAIConfig(api_key="test-key")
+        )
+    )
 ```
 
-## 実装の特徴
+## 利点
 
-### FastMCP Multi-Server Clientsへの依存による極度の簡素化
+### 1. 実装の大幅簡素化
 
-**FastMCP Multi-Server Clientsが提供する機能:**
+**削減される実装:**
+- 独自MCPクライアントモジュール全体（~70行）
+- MCPClient ラッパークラス
+- 独自例外ハンドリングシステム
+- 設定変換レイヤー
+- 対応するテストスイート（~10テストケース）
+
+### 2. パフォーマンスの向上
+
+**永続接続による効率化:**
+- リクエストごとの接続確立コストを削減
+- MCPサーバーとの接続状態を維持
+- 複数リクエストでの接続再利用
+- インタラクティブモードでの高速応答
+
+### 3. FastMCPの豊富な機能を直接享受
+
+**利用可能な機能:**
 - 複数サーバーの統合接続管理
 - 自動プレフィックス付与とルーティング
-- JSON-RPC 2.0プロトコル実装
+- JSON-RPC 2.0プロトコル完全実装
 - 非同期通信とContext Manager
 - タイムアウトとエラーハンドリング
-- 各トランスポートの自動推論
+- 各トランスポート（HTTP、WebSocket、stdin/stdout）の自動推論
 
-**独自実装が必要な機能（極小限）:**
-- 生辞書形式設定 → FastMCPConfig形式の単純ラップ
-- エージェント向けインターフェース（server_name + tool_name の分離）
-- ygents固有のエラーラッピング
+### 4. 保守性の向上
 
-### 設計の極度な簡潔性
+**メリット:**
+- FastMCPのアップデートを直接享受
+- 新しいMCPプロトコル機能の自動追従
+- バグ修正とパフォーマンス改善の自動適用
+- ドキュメント・サポートの充実
 
-**従来の設計 vs 生辞書+FastMCP委譲後:**
-- **モジュール数**: 5ファイル → 2ファイル
-- **クラス数**: 複数クラス → 1つのラッパークラス
-- **テストケース**: 40テストケース → 10テストケース
-- **実装コード**: 数百行 → 数十行（さらに削減）
-- **バリデーション**: 複雑なPydantic → FastMCPに完全委譲
+### 5. 設定の一貫性
 
-### 保守性
+既存の設定管理システムを活用して一貫性を保持：
 
-- **透明プロキシ**: FastMCPの機能をほぼ透過的に利用
-- **設定形式同期**: FastMCP設定形式と完全同期
-- **ゼロ変換コスト**: 中間変換レイヤーを完全排除
-- **FastMCP依存**: ライブラリの全機能と進化を直接享受
-
-## FastMCP Multi-Server Clientsの活用方針
-
-### 実装パターン
-
-```python
-class MCPClient:
-    def __init__(self, servers_config: Dict[str, Dict[str, Any]]):
-        # 生辞書をそのままFastMCPConfig形式にラップ
-        mcp_config = {"mcpServers": servers_config}
-        # FastMCPのMulti-Server Clientを直接使用
-        self._fastmcp_client = Client(mcp_config)
-    
-    async def execute_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]):
-        # プレフィックス付きツール名を作成
-        prefixed_tool_name = f"{server_name}_{tool_name}"
-        # FastMCPに完全委譲
-        return await self._fastmcp_client.call_tool(prefixed_tool_name, arguments)
+```yaml
+# config.yaml
+mcp_servers:
+  weather:
+    url: "https://weather-api.example.com/mcp"
+  assistant:
+    command: "python"
+    args: ["./assistant_server.py"]
 ```
 
-### Multi-Server Clientsの自動機能
+## 実装例
 
-1. **設定からの自動サーバー起動**
-   ```python
-   config = {"mcpServers": {"weather": {"url": "..."}, "assistant": {"command": "..."}}}
-   async with Client(config) as client:
-       # 両サーバーが自動的に接続される
-   ```
+### エージェント内でのFastMCP永続接続
 
-2. **自動プレフィックスとルーティング**
-   ```python
-   # weather_get_forecast → weatherサーバーのget_forecastツールに自動ルーティング
-   await client.call_tool("weather_get_forecast", {"city": "Tokyo"})
-   ```
+```python
+# src/ygents/agent/core.py（実装予定）
+import fastmcp
+from fastmcp.exceptions import ClientError, ConnectionError
+from ..config.models import YgentsConfig
 
-3. **統一されたリソースアクセス**
-   ```python
-   # weather://weather/icons/sunny → weatherサーバーのリソースに自動ルーティング
-   await client.read_resource("weather://weather/icons/sunny")
-   ```
+class Agent:
+    def __init__(self, config: YgentsConfig):
+        self.config = config
+        self._mcp_client = None
+        self._mcp_client_connected = False
+    
+    def _create_fastmcp_config(self) -> dict:
+        """設定からFastMCPConfig形式を生成"""
+        return {"mcpServers": self.config.mcp_servers}
+    
+    async def __aenter__(self) -> "Agent":
+        """エージェント開始時にMCPクライアントを初期化・接続"""
+        fastmcp_config = self._create_fastmcp_config()
+        self._mcp_client = fastmcp.Client(fastmcp_config)
+        await self._mcp_client.__aenter__()
+        self._mcp_client_connected = True
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """エージェント終了時にMCPクライアントを切断"""
+        if self._mcp_client and self._mcp_client_connected:
+            await self._mcp_client.__aexit__(exc_type, exc_val, exc_tb)
+            self._mcp_client_connected = False
+    
+    async def execute_mcp_tool(self, server_name: str, tool_name: str, arguments: dict):
+        """MCPツールを実行（永続接続を使用）"""
+        if not self._mcp_client_connected:
+            raise RuntimeError("Agent not connected. Use 'async with agent:' pattern.")
+        
+        try:
+            # 永続接続を使ってツール実行
+            prefixed_tool_name = f"{server_name}_{tool_name}"
+            return await self._mcp_client.call_tool(prefixed_tool_name, arguments)
+        except ConnectionError as e:
+            raise e  # 接続エラーをそのまま伝播
+        except ClientError as e:
+            raise e  # ツール実行エラーをそのまま伝播
+    
+    async def list_mcp_tools(self) -> list:
+        """利用可能なMCPツール一覧を取得"""
+        if not self._mcp_client_connected:
+            raise RuntimeError("Agent not connected. Use 'async with agent:' pattern.")
+        
+        return await self._mcp_client.list_tools()
+```
 
-### 今後の拡張予定
+### LiteLLM + FastMCP統合例（永続接続）
 
-1. **FastMCPライブラリの新機能活用**
-   - Multi-Server Clientsの機能拡張追従
-   - 新しいトランスポートタイプ対応
-   - パフォーマンス最適化の自動適用
+```python
+# エージェント内でのLiteLLM + FastMCP連携（永続接続使用）
+class Agent:
+    async def process_request(self, user_input: str) -> str:
+        """リクエスト処理（永続MCP接続を再利用）"""
+        if not self._mcp_client_connected:
+            raise RuntimeError("Agent not connected. Use 'async with agent:' pattern.")
+        
+        # 1. ユーザーリクエストをLLMで分析
+        analysis = await self._analyze_request_with_llm(user_input)
+        
+        # 2. 必要なMCPツールを実行（永続接続を再利用）
+        mcp_results = []
+        for tool_call in analysis.tool_calls:
+            result = await self.execute_mcp_tool(
+                tool_call.server, tool_call.tool, tool_call.arguments
+            )
+            mcp_results.append(result)
+        
+        # 3. MCP結果を含めてLLMで最終応答生成
+        return await self._generate_response_with_llm(user_input, mcp_results)
 
-2. **エージェント統合機能**
-   - ツール検索・発見機能
-   - 実行結果のフォーマット統一
-   - エラーリカバリとフォールバック
+# 使用例：複数リクエストでの永続接続活用
+async def main():
+    config = load_config("config.yaml")
+    
+    async with Agent(config) as agent:
+        # エージェント開始時に一度だけMCPサーバーに接続
+        
+        # 複数リクエストで同じ接続を効率的に再利用
+        result1 = await agent.process_request("東京の天気を教えて")
+        result2 = await agent.process_request("大阪の気温は？") 
+        result3 = await agent.process_request("明日の予報をお願いします")
+        
+        # CLI/インタラクティブモードでも永続接続を維持
+        while True:
+            user_input = input("質問: ")
+            if user_input.lower() in ['quit', 'exit']:
+                break
+            response = await agent.process_request(user_input)
+            print(f"回答: {response}")
+    
+    # エージェント終了時に全MCP接続が自動的に閉じられる
+```
 
-3. **設定管理強化**
-   - 動的サーバー追加・削除
-   - 設定ホットリロード
-   - サーバーヘルスモニタリング
+## 今後の拡張
 
-## 関連ファイル
+### 1. FastMCPライブラリの新機能活用
+- Multi-Server Clientsの機能拡張追従
+- 新しいトランスポートタイプ対応
+- パフォーマンス最適化の自動適用
 
-- `src/ygents/mcp/client.py`: MCPClient実装（薄いラッパー）
-- `src/ygents/mcp/exceptions.py`: 例外定義
-- `src/ygents/config/models.py`: MCPServerConfig定義
-- `tests/test_mcp/`: MCPテストスイート
-- `pyproject.toml`: fastmcp依存関係定義
-- `design/libs/factmcp/clients.mdx`: FastMCPクライアントドキュメント
+### 2. エージェント統合機能
+- 動的ツール検索・発見
+- 実行結果の構造化処理
+- エラーリカバリとフォールバック
+
+### 3. 設定管理の高度化
+- 動的サーバー追加・削除
+- 設定ホットリロード
+- サーバーヘルスモニタリング
+
+## 関連ドキュメント
+
+- [FastMCP Documentation](https://docs.fastmcp.ai/)
+- [設定管理モジュール設計](./config-management.md)
+- [LLMインターフェース設計](./llm-interface.md)
+- [エージェント中核ロジック設計](./agent-core.md)（作成予定）
+- [実装計画書](../IMPLEMENTATION_PLAN.md)
+
+## まとめ
+
+FastMCPを直接利用することで：
+
+1. **実装コストの大幅削減**: 独自MCPクライアントモジュール不要
+2. **機能豊富性**: FastMCPの全機能を直接享受
+3. **保守性の向上**: アップデートの自動追従
+4. **設定の統一**: 既存設定システムとの統合
+
+この方針により、より多くのリソースをエージェントの中核ロジックとユーザーエクスペリエンスの向上に集中できます。

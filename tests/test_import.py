@@ -13,6 +13,6 @@ def test_import_submodules():
     import ygents.agent  # noqa: F401
     import ygents.cli  # noqa: F401
     import ygents.config  # noqa: F401
-    import ygents.mcp  # noqa: F401
 
     # Note: ygents.llm module is not implemented (using LiteLLM directly)
+    # Note: ygents.mcp module is not implemented (using FastMCP directly)
