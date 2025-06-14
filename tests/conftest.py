@@ -28,7 +28,7 @@ def temp_dir():
 def clean_env():
     """Clean environment variables fixture.
 
-    Temporarily removes OPENAI_API_KEY and ANTHROPIC_API_KEY environment variables,
+    Temporarily removes API key environment variables,
     then restores them after the test.
     """
     # Store original values
