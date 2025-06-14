@@ -6,42 +6,9 @@ from pydantic import ValidationError
 from ygents.config.models import (
     ClaudeConfig,
     LLMConfig,
-    MCPServerConfig,
     OpenAIConfig,
     YgentsConfig,
 )
-
-
-class TestMCPServerConfig:
-    """Test cases for MCPServerConfig."""
-
-    def test_mcp_server_config_with_url(self):
-        """Test MCP server config with URL."""
-        config = MCPServerConfig(url="https://example.com/mcp")
-        assert config.url == "https://example.com/mcp"
-        assert config.command is None
-        assert config.args == []
-
-    def test_mcp_server_config_with_command(self):
-        """Test MCP server config with command."""
-        config = MCPServerConfig(command="python", args=["server.py", "--port", "8080"])
-        assert config.command == "python"
-        assert config.args == ["server.py", "--port", "8080"]
-        assert config.url is None
-
-    def test_mcp_server_config_validation_both_url_and_command(self):
-        """Test validation error when both URL and command are provided."""
-        with pytest.raises(
-            ValidationError, match="Either url or command must be specified"
-        ):
-            MCPServerConfig(url="https://example.com/mcp", command="python")
-
-    def test_mcp_server_config_validation_neither_url_nor_command(self):
-        """Test validation error when neither URL nor command are provided."""
-        with pytest.raises(
-            ValidationError, match="Either url or command must be specified"
-        ):
-            MCPServerConfig()
 
 
 class TestOpenAIConfig:
@@ -128,17 +95,17 @@ class TestYgentsConfig:
         assert config.llm.provider == "openai"
 
     def test_ygents_config_with_mcp_servers(self):
-        """Test Ygents config with MCP servers."""
+        """Test Ygents config with MCP servers (raw dict format)."""
         config = YgentsConfig(
             mcp_servers={
-                "weather": MCPServerConfig(url="https://weather.example.com"),
-                "assistant": MCPServerConfig(command="python", args=["server.py"]),
+                "weather": {"url": "https://weather.example.com"},
+                "assistant": {"command": "python", "args": ["server.py"]},
             },
             llm=LLMConfig(provider="claude", claude=ClaudeConfig(api_key="test-key")),
         )
         assert len(config.mcp_servers) == 2
-        assert config.mcp_servers["weather"].url == "https://weather.example.com"
-        assert config.mcp_servers["assistant"].command == "python"
+        assert config.mcp_servers["weather"]["url"] == "https://weather.example.com"
+        assert config.mcp_servers["assistant"]["command"] == "python"
         assert config.llm.provider == "claude"
 
     def test_ygents_config_validation_missing_llm(self):

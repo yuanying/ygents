@@ -1,25 +1,8 @@
 """Configuration data models."""
 
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
-
-
-class MCPServerConfig(BaseModel):
-    """MCP server configuration."""
-
-    url: Optional[str] = None
-    command: Optional[str] = None
-    args: List[str] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def validate_url_or_command(self) -> "MCPServerConfig":
-        """Validate that either URL or command is specified, but not both."""
-        if self.url is not None and self.command is not None:
-            raise ValueError("Either url or command must be specified")
-        if self.url is None and self.command is None:
-            raise ValueError("Either url or command must be specified")
-        return self
 
 
 class OpenAIConfig(BaseModel):
@@ -56,5 +39,5 @@ class LLMConfig(BaseModel):
 class YgentsConfig(BaseModel):
     """Main ygents configuration."""
 
-    mcp_servers: Dict[str, MCPServerConfig] = Field(default_factory=dict)
+    mcp_servers: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     llm: LLMConfig
