@@ -10,8 +10,8 @@ def test_import_main_package():
 
 def test_import_submodules():
     """Test that all submodules can be imported."""
-    import ygents.agent
-    import ygents.cli
-    import ygents.config
-    import ygents.llm
-    import ygents.mcp
+    import ygents.agent  # noqa: F401
+    import ygents.cli  # noqa: F401
+    import ygents.config  # noqa: F401
+    import ygents.llm  # noqa: F401
+    import ygents.mcp  # noqa: F401

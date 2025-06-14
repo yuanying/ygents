@@ -88,7 +88,7 @@ llm:
         assert config.llm.claude.model == "claude-3-sonnet-20240229"
 
     def test_config_validation_missing_required_fields(self, temp_dir):
-        """Test config validation with missing LLM config (MCP validation delegated to FastMCP)."""
+        """Test config validation with missing LLM config."""
         config_file = temp_dir / "config.yaml"
         config_content = """
 mcpServers:
