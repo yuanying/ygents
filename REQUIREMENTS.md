@@ -7,6 +7,19 @@
 **開発言語**: Python 3.10+  
 **開発方針**: テスト駆動開発（TDD）
 
+## 機能概要
+
+CLIベースのLLM agentです。ユーザーからの問いかけに対しツールを利用し問題を解決します。
+
+以下が基本的なフローです。
+
+1. ユーザー: 何らかの問題を解決するようにエージェントに問い合わせる。
+2. エージェント: 問いかけに対し解決方法を模索する単純なcompletionループを回す。
+  - ユーザの問いかけに対し解決方法を考える。
+  - 必要ならば外部ツールなどを用い問題を解決する。
+  - 途中で方向性を間違えていた場合はまたループの最初に戻る。
+  - 問題が解決した場合はユーザーにレスポンスを返す。
+
 ## 基本機能要件
 
 ### 1. 設定管理
@@ -70,9 +83,52 @@ ygents/
 - **設定駆動**: YAML + 環境変数による柔軟な設定管理
 - **依存性注入**: 外部ライブラリ機能の直接活用
 
-## 設定例
+## ラフデザイン
 
-### 設定ファイル（config.yaml）
+### Agent
+
+Agentクラスの想定する利用方法の疑似コードは以下のようになります。
+
+```python
+async with Agent(...) as agent:
+    for t in agent.available_tools:
+        print(t.function.name)
+
+    while True:
+        user_input = await _async_prompt(exit_event=exit_event)
+
+        # user_input を元に user_input で提示された問題が解決されたと判断されるまで
+        # completion を複数回単純にループを回す。
+        # completion の合間に tool_call が必要な場合は適宜 tool_call を行う。
+        async for chunk in agent.run(user_input, abort_event=abort_event):
+            _display_chunk(chunk)
+```
+
+`Agent#run` の疑似コードは以下の通りになります。
+
+```python
+class Agent():
+    async def run(
+        self,
+        user_input: str,
+    ) -> AsyncGenerator[Any, None]:
+        self.messages.append({"role": "user", "content": user_input})
+
+        while True:
+            #　ユーザーのクエリに対して一回 `completion` を行う。
+            # completion の response を適切に yield する。
+            # また、tool の使用がレスポンスに含まれていた場合は、
+            # tool を実行し入力と結果をyieldする。
+            async for item in self.process_single_turn_with_tools(self.messages)
+                yield item
+
+            if (問い合わせの終了を判断):
+                return
+```
+
+### 設定
+
+#### 設定ファイル（config.yaml）
 
 ```yaml
 # MCP サーバー設定（生辞書形式、FastMCPに直接委譲）
@@ -94,7 +150,7 @@ llm:
     model: "claude-3-sonnet-20240229"
 ```
 
-### 環境変数
+#### 環境変数
 
 - `OPENAI_API_KEY`: OpenAI APIキー
 - `ANTHROPIC_API_KEY`: Anthropic APIキー（Claude用）
