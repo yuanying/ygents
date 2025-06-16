@@ -10,11 +10,26 @@ Agent with MCP Example
 
 使用方法:
     export OPENAI_API_KEY="your-openai-api-key"
-    python examples/agent_with_mcp.py
+    python -W ignore examples/agent_with_mcp.py
 """
 
-import asyncio
+#!/usr/bin/env python3
+
+# Warningsを最初に抑制
 import os
+import warnings
+os.environ["PYTHONWARNINGS"] = "ignore"
+warnings.simplefilter("ignore")
+# 全ての警告を抑制
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*")
+import logging
+# Rich/fastmcpのERRORログも抑制
+logging.getLogger("rich").setLevel(logging.CRITICAL)
+logging.getLogger("fastmcp").setLevel(logging.CRITICAL)
+
+import asyncio
 import sys
 from pathlib import Path
 
