@@ -109,15 +109,19 @@ class Agent:
         try:
             import litellm
 
+            # MCPクライアントが接続されているがツールがキャッシュされていない場合、キャッシュする
+            if self._mcp_client_connected and not hasattr(self, "_cached_tools"):
+                await self._cache_available_tools()
+
             # MessageオブジェクトをAPI用のdict形式に変換
             messages_dict = [msg.to_dict() for msg in messages]
 
+            tools_schema = self._get_tools_schema() if self._mcp_client_connected else None
+            
             response = litellm.completion(
                 model=self._get_model_name(),
                 messages=messages_dict,
-                tools=(
-                    self._get_tools_schema() if self._mcp_client_connected else None
-                ),
+                tools=tools_schema,
                 stream=True,
                 **self._get_llm_params(),
             )
@@ -134,6 +138,21 @@ class Agent:
                 if chunk.choices[0].delta.tool_calls:
                     for chunk_tool_call in chunk.choices[0].delta.tool_calls:
                         tool_call_id = chunk_tool_call.id
+                        
+                        # tool_call_idがNoneの場合は、最後のtool_callに累積
+                        if tool_call_id is None:
+                            # 最後のtool_callを取得して累積
+                            if tool_calls_accumulator:
+                                last_tool_call_id = list(tool_calls_accumulator.keys())[-1]
+                                
+                                # function情報を累積
+                                if hasattr(chunk_tool_call, "function") and chunk_tool_call.function:
+                                    if hasattr(chunk_tool_call.function, "name") and chunk_tool_call.function.name:
+                                        tool_calls_accumulator[last_tool_call_id]["function"]["name"] = chunk_tool_call.function.name
+                                    
+                                    if hasattr(chunk_tool_call.function, "arguments") and chunk_tool_call.function.arguments:
+                                        tool_calls_accumulator[last_tool_call_id]["function"]["arguments"] += chunk_tool_call.function.arguments
+                            continue
                         
                         if tool_call_id not in tool_calls_accumulator:
                             # 新しいtool_callの開始
@@ -290,5 +309,5 @@ class Agent:
             try:
                 tools = await self._mcp_client.list_tools()
                 self._cached_tools = tools
-            except Exception:
+            except Exception as e:
                 self._cached_tools = []
