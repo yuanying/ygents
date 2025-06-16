@@ -208,9 +208,7 @@ async def test_get_model_name_claude():
     config = YgentsConfig(
         llm=LLMConfig(
             provider="claude",
-            claude=ClaudeConfig(
-                api_key="test-key", model="claude-3-sonnet-20240229"
-            ),
+            claude=ClaudeConfig(api_key="test-key", model="claude-3-sonnet-20240229"),
         ),
         mcp_servers={},
     )
