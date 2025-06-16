@@ -1,7 +1,63 @@
 """Agent models."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
+
+
+@dataclass
+class ContentChunk:
+    """Content chunk from LLM response."""
+
+    type: str = "content"
+    content: str = ""
+
+
+@dataclass
+class ToolInput:
+    """Tool input information."""
+
+    type: str = "tool_input"
+    tool_name: str = ""
+    arguments: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ToolResult:
+    """Tool execution result."""
+
+    type: str = "tool_result"
+    tool_name: str = ""
+    result: Any = None
+
+
+@dataclass
+class ToolError:
+    """Tool execution error."""
+
+    type: str = "tool_error"
+    content: str = ""
+
+
+@dataclass
+class ErrorMessage:
+    """Agent error information."""
+
+    type: str = "error"
+    content: str = ""
+
+
+@dataclass
+class StatusUpdate:
+    """Agent status update."""
+
+    type: str = "status"
+    content: str = ""
+
+
+# Union type for all possible yield items
+AgentYieldItem = Union[
+    ContentChunk, ToolInput, ToolResult, ToolError, ErrorMessage, StatusUpdate
+]
 
 
 @dataclass
