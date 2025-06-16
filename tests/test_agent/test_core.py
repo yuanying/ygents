@@ -1,6 +1,6 @@
 """Agent core tests."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -143,6 +143,56 @@ async def test_execute_tool_calls(mock_agent_config_with_mcp):
 
 
 @pytest.mark.asyncio
+async def test_tool_calls_json_arguments_parsing():
+    """Test tool calls with JSON string arguments parsing."""
+    from ygents.config.models import LLMConfig, OpenAIConfig, YgentsConfig
+    
+    config = YgentsConfig(
+        llm=LLMConfig(
+            provider="openai", 
+            openai=OpenAIConfig(api_key="test-key", model="gpt-4")
+        ),
+        mcp_servers={"test_server": {}},
+    )
+    
+    with patch("fastmcp.Client") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value = mock_client
+        mock_client.call_tool.return_value = "Weather: Sunny, 25°C"
+
+        async with Agent(config) as agent:
+            agent._mcp_client = mock_client
+            agent._mcp_client_connected = True
+            
+            # JSON文字列としてargumentsが来る場合のテスト
+            tool_calls = [
+                {
+                    "id": "tool_call_1",
+                    "function": {
+                        "name": "get_weather", 
+                        "arguments": '{"city": "Tokyo", "unit": "celsius"}'
+                    },
+                }
+            ]
+
+            results = []
+            async for chunk in agent._execute_tool_calls(tool_calls):
+                results.append(chunk)
+
+            # Check tool input has parsed arguments
+            tool_inputs = [c for c in results if isinstance(c, ToolInput)]
+            assert len(tool_inputs) == 1
+            assert tool_inputs[0].tool_name == "get_weather"
+            assert tool_inputs[0].arguments == {"city": "Tokyo", "unit": "celsius"}
+            
+            # Verify mock was called with parsed arguments
+            mock_client.call_tool.assert_called_once_with(
+                "get_weather", 
+                {"city": "Tokyo", "unit": "celsius"}
+            )
+
+
+@pytest.mark.asyncio
 async def test_problem_solved_detection(mock_agent_config):
     """Test problem solved detection."""
     agent = Agent(mock_agent_config)
@@ -265,6 +315,40 @@ async def test_get_tools_schema(mock_agent_config):
 
 
 @pytest.mark.asyncio
+async def test_get_tools_schema_with_mcp(mock_agent_config_with_mcp):
+    """Test tools schema generation with MCP tools."""
+    with patch("fastmcp.Client") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value = mock_client
+        
+        # Mock tool with description and input_schema
+        mock_tool = MagicMock()
+        mock_tool.name = "get_weather"
+        mock_tool.description = "Get weather for a city"
+        mock_tool.input_schema = {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "City name"}
+            },
+            "required": ["city"]
+        }
+        mock_client.list_tools.return_value = [mock_tool]
+
+        agent = Agent(mock_agent_config_with_mcp)
+        agent._mcp_client = mock_client
+        agent._mcp_client_connected = True
+        agent._cached_tools = [mock_tool]
+
+        schema = agent._get_tools_schema()
+        
+        assert len(schema) == 1
+        assert schema[0]["type"] == "function"
+        assert schema[0]["function"]["name"] == "get_weather"
+        assert schema[0]["function"]["description"] == "Get weather for a city"
+        assert schema[0]["function"]["parameters"] == mock_tool.input_schema
+
+
+@pytest.mark.asyncio
 async def test_cache_available_tools(mock_agent_config_with_mcp):
     """Test caching available tools."""
     with patch("fastmcp.Client") as mock_client_class:
@@ -281,3 +365,65 @@ async def test_cache_available_tools(mock_agent_config_with_mcp):
         assert hasattr(agent, "_cached_tools")
         assert agent._cached_tools == [{"name": "test_tool"}]
         mock_client.list_tools.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_streaming_tool_calls_accumulation(mock_agent_config_with_mcp, mock_litellm_streaming_tool_calls):
+    """Test streaming tool calls accumulation across chunks."""
+    with patch("fastmcp.Client") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client_class.return_value = mock_client
+        mock_client.call_tool.return_value = "Tokyo: Sunny, 25°C"
+        
+        # Mock tool schema
+        mock_tool = MagicMock()
+        mock_tool.name = "get_weather"
+        mock_tool.description = "Get weather for a city"
+        mock_tool.input_schema = {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"]
+        }
+        mock_client.list_tools.return_value = [mock_tool]
+
+        async with Agent(mock_agent_config_with_mcp) as agent:
+            agent._mcp_client = mock_client
+            agent._mcp_client_connected = True
+            agent._cached_tools = [mock_tool]
+
+            results = []
+            async for chunk in agent.run("天気を教えて"):
+                results.append(chunk)
+
+            # Check that we got tool input and result
+            tool_inputs = [c for c in results if isinstance(c, ToolInput)]
+            tool_results = [c for c in results if isinstance(c, ToolResult)]
+            content_chunks = [c for c in results if isinstance(c, ContentChunk)]
+
+            assert len(tool_inputs) == 1
+            assert len(tool_results) == 1
+            assert len(content_chunks) > 0
+
+            # Check that tool was called with correct arguments
+            assert tool_inputs[0].tool_name == "get_weather"
+            assert tool_inputs[0].arguments == {"city": "Tokyo"}
+            
+            # Verify MCP client was called with parsed arguments
+            mock_client.call_tool.assert_called_once_with(
+                "get_weather", 
+                {"city": "Tokyo"}
+            )
+            
+            # Check that assistant message was correctly constructed
+            assert len(agent.messages) >= 2  # user + assistant messages
+            assistant_msg = None
+            for msg in agent.messages:
+                if msg.role == "assistant" and msg.tool_calls:
+                    assistant_msg = msg
+                    break
+            
+            assert assistant_msg is not None
+            assert len(assistant_msg.tool_calls) == 1
+            assert assistant_msg.tool_calls[0]["id"] == "tool_call_1"
+            assert assistant_msg.tool_calls[0]["function"]["name"] == "get_weather"
+            assert assistant_msg.tool_calls[0]["function"]["arguments"] == '{"city": "Tokyo"}'

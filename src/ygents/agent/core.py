@@ -39,6 +39,9 @@ class Agent:
                 self._mcp_client = fastmcp.Client(fastmcp_config)
                 await self._mcp_client.__aenter__()
                 self._mcp_client_connected = True
+                
+                # ツール一覧をキャッシュ
+                await self._cache_available_tools()
             except ImportError:
                 raise AgentConnectionError("fastmcp is not available")
             except Exception as e:
@@ -120,6 +123,7 @@ class Agent:
             )
 
             assistant_message = Message(role="assistant", content="", tool_calls=[])
+            tool_calls_accumulator = {}  # tool_call_id -> tool_call 辞書
 
             for chunk in response:
                 if chunk.choices[0].delta.content:
@@ -128,8 +132,30 @@ class Agent:
                     yield ContentChunk(content=content)
 
                 if chunk.choices[0].delta.tool_calls:
-                    for tool_call in chunk.choices[0].delta.tool_calls:
-                        assistant_message.tool_calls.append(tool_call)
+                    for chunk_tool_call in chunk.choices[0].delta.tool_calls:
+                        tool_call_id = chunk_tool_call.id
+                        
+                        if tool_call_id not in tool_calls_accumulator:
+                            # 新しいtool_callの開始
+                            tool_calls_accumulator[tool_call_id] = {
+                                "id": tool_call_id,
+                                "type": getattr(chunk_tool_call, "type", "function"),
+                                "function": {
+                                    "name": "",
+                                    "arguments": ""
+                                }
+                            }
+                        
+                        # function情報を累積
+                        if hasattr(chunk_tool_call, "function") and chunk_tool_call.function:
+                            if hasattr(chunk_tool_call.function, "name") and chunk_tool_call.function.name:
+                                tool_calls_accumulator[tool_call_id]["function"]["name"] = chunk_tool_call.function.name
+                            
+                            if hasattr(chunk_tool_call.function, "arguments") and chunk_tool_call.function.arguments:
+                                tool_calls_accumulator[tool_call_id]["function"]["arguments"] += chunk_tool_call.function.arguments
+
+            # 累積されたtool_callsをメッセージに設定
+            assistant_message.tool_calls = list(tool_calls_accumulator.values())
 
             # ストリーミング完了後、アシスタントメッセージを追加
             self.messages.append(assistant_message)
@@ -148,9 +174,20 @@ class Agent:
         self, tool_calls: List[Dict[str, Any]]
     ) -> AsyncGenerator[AgentYieldItem, None]:
         """ツール呼び出しを実行し、結果をyield"""
+        import json
+        
         for tool_call in tool_calls:
             tool_name = tool_call.get("function", {}).get("name")
-            arguments = tool_call.get("function", {}).get("arguments", {})
+            arguments_str = tool_call.get("function", {}).get("arguments", "{}")
+            
+            # argumentsがJSON文字列の場合はパース
+            try:
+                if isinstance(arguments_str, str):
+                    arguments = json.loads(arguments_str) if arguments_str else {}
+                else:
+                    arguments = arguments_str
+            except json.JSONDecodeError:
+                arguments = {}
 
             yield ToolInput(tool_name=tool_name, arguments=arguments)
 
@@ -218,9 +255,34 @@ class Agent:
 
     def _get_tools_schema(self) -> List[Dict[str, Any]]:
         """MCPツールをLiteLLM tools形式に変換"""
-        if not self._mcp_client_connected:
+        if not self._mcp_client_connected or not hasattr(self, "_cached_tools"):
             return []
-        return []
+        
+        tools_schema = []
+        for tool in self._cached_tools:
+            # MCPツール情報をOpenAI Function Calling形式に変換
+            tool_schema = {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description or f"Execute {tool.name} tool",
+                }
+            }
+            
+            # パラメータスキーマがある場合は追加
+            if hasattr(tool, "input_schema") and tool.input_schema:
+                tool_schema["function"]["parameters"] = tool.input_schema
+            else:
+                # デフォルトのパラメータスキーマ
+                tool_schema["function"]["parameters"] = {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            
+            tools_schema.append(tool_schema)
+        
+        return tools_schema
 
     async def _cache_available_tools(self) -> None:
         """ツール一覧をキャッシュ（初期化時に実行）"""
