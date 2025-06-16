@@ -1,8 +1,5 @@
 """Configuration models tests."""
 
-import pytest
-from pydantic import ValidationError
-
 from ygents.config.models import YgentsConfig
 
 
@@ -21,7 +18,7 @@ class TestYgentsConfig:
             litellm={
                 "model": "gpt-3.5-turbo",
                 "api_key": "test-key",
-                "temperature": 0.7
+                "temperature": 0.7,
             }
         )
         assert config.litellm["model"] == "gpt-3.5-turbo"
@@ -35,10 +32,7 @@ class TestYgentsConfig:
                 "weather": {"url": "https://weather.example.com"},
                 "assistant": {"command": "python", "args": ["server.py"]},
             },
-            litellm={
-                "model": "claude-3-sonnet-20240229",
-                "api_key": "test-key"
-            }
+            litellm={"model": "claude-3-sonnet-20240229", "api_key": "test-key"},
         )
         assert len(config.mcp_servers) == 2
         assert config.mcp_servers["weather"]["url"] == "https://weather.example.com"

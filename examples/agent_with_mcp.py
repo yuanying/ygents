@@ -119,10 +119,7 @@ async def mcp_agent_example():
 
     # 設定を作成（MCPサーバーあり）
     config = YgentsConfig(
-        litellm={
-            "model": "openai/gpt-4o",
-            "api_key": os.getenv("OPENAI_API_KEY", "")
-        },
+        litellm={"model": "openai/gpt-4o", "api_key": os.getenv("OPENAI_API_KEY", "")},
     )
 
     # APIキーの確認
@@ -208,10 +205,7 @@ async def interactive_mcp_chat():
 
     # 設定を作成
     config = YgentsConfig(
-        litellm={
-            "model": "openai/gpt-4o",
-            "api_key": os.getenv("OPENAI_API_KEY", "")
-        },
+        litellm={"model": "openai/gpt-4o", "api_key": os.getenv("OPENAI_API_KEY", "")},
         mcp_servers={"example_server": {}},
     )
 

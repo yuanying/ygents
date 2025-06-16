@@ -275,7 +275,6 @@ class Agent:
             return any(keyword in content for keyword in end_keywords)
         return False
 
-
     def _get_tools_schema(self) -> List[Dict[str, Any]]:
         """MCPツールをLiteLLM tools形式に変換"""
         if not self._mcp_client_connected or not hasattr(self, "_cached_tools"):

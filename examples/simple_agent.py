@@ -48,10 +48,7 @@ async def simple_chat_example():
 
     # 設定を作成
     config = YgentsConfig(
-        litellm={
-            "model": "openai/gpt-4o",
-            "api_key": os.getenv("OPENAI_API_KEY", "")
-        },
+        litellm={"model": "openai/gpt-4o", "api_key": os.getenv("OPENAI_API_KEY", "")},
         mcp_servers={},  # MCPサーバーなしで実行
     )
 
@@ -102,7 +99,7 @@ async def interactive_chat():
     config = YgentsConfig(
         litellm={
             "model": "openai/gpt-3.5-turbo",
-            "api_key": os.getenv("OPENAI_API_KEY", "")
+            "api_key": os.getenv("OPENAI_API_KEY", ""),
         },
         mcp_servers={},
     )
