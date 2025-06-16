@@ -4,6 +4,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from ..config.models import YgentsConfig
 from .exceptions import AgentConnectionError, AgentError
+from .models import Message
 
 
 class Agent:
@@ -17,7 +18,7 @@ class Agent:
         self.config = config
         self._mcp_client: Optional[Any] = None
         self._mcp_client_connected = False
-        self.messages: List[Dict[str, Any]] = []
+        self.messages: List[Message] = []
 
     async def __aenter__(self) -> "Agent":
         """エージェント開始時にMCPクライアントを初期化・接続"""
@@ -62,7 +63,7 @@ class Agent:
         3. 必要に応じてツール実行
         4. 問題解決判定で終了
         """
-        self.messages.append({"role": "user", "content": user_input})
+        self.messages.append(Message(role="user", content=user_input))
 
         while True:
             loop_completed = False
@@ -81,15 +82,18 @@ class Agent:
                 break
 
     async def process_single_turn_with_tools(
-        self, messages: List[Dict[str, Any]]
+        self, messages: List[Message]
     ) -> AsyncGenerator[Any, None]:
         """単一ターンでのLLM completion + ツール実行"""
         try:
             import litellm
 
+            # MessageオブジェクトをAPI用のdict形式に変換
+            messages_dict = [msg.to_dict() for msg in messages]
+
             response = litellm.completion(
                 model=self._get_model_name(),
-                messages=messages,
+                messages=messages_dict,
                 tools=(
                     self._get_tools_schema() if self._mcp_client_connected else None
                 ),
@@ -97,31 +101,23 @@ class Agent:
                 **self._get_llm_params(),
             )
 
-            assistant_message: Dict[str, Any] = {
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [],
-            }
+            assistant_message = Message(role="assistant", content="", tool_calls=[])
 
             for chunk in response:
                 if chunk.choices[0].delta.content:
                     content = chunk.choices[0].delta.content
-                    assistant_message["content"] += content
+                    assistant_message.content += content
                     yield {"type": "content", "content": content}
 
                 if chunk.choices[0].delta.tool_calls:
                     for tool_call in chunk.choices[0].delta.tool_calls:
-                        assistant_message["tool_calls"].append(tool_call)
-
-            # tool_callsが空の場合は削除
-            if not assistant_message.get("tool_calls"):
-                assistant_message.pop("tool_calls", None)
+                        assistant_message.tool_calls.append(tool_call)
 
             self.messages.append(assistant_message)
 
-            if assistant_message.get("tool_calls"):
+            if assistant_message.tool_calls:
                 async for tool_result in self._execute_tool_calls(
-                    assistant_message["tool_calls"]
+                    assistant_message.tool_calls
                 ):
                     yield tool_result
 
@@ -144,11 +140,11 @@ class Agent:
                     result = await self._mcp_client.call_tool(tool_name, arguments)
 
                     self.messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call.get("id"),
-                            "content": str(result),
-                        }
+                        Message(
+                            role="tool",
+                            tool_call_id=tool_call.get("id", ""),
+                            content=str(result),
+                        )
                     )
 
                     yield {
@@ -165,11 +161,11 @@ class Agent:
             except Exception as e:
                 error_msg = f"ツール実行エラー ({tool_name}): {e}"
                 self.messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.get("id"),
-                        "content": error_msg,
-                    }
+                    Message(
+                        role="tool",
+                        tool_call_id=tool_call.get("id", ""),
+                        content=error_msg,
+                    )
                 )
                 yield {"type": "tool_error", "content": error_msg}
 
