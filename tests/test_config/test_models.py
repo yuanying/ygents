@@ -1,86 +1,6 @@
 """Configuration models tests."""
 
-import pytest
-from pydantic import ValidationError
-
-from ygents.config.models import (
-    ClaudeConfig,
-    LLMConfig,
-    OpenAIConfig,
-    YgentsConfig,
-)
-
-
-class TestOpenAIConfig:
-    """Test cases for OpenAIConfig."""
-
-    def test_openai_config_basic(self):
-        """Test basic OpenAI config."""
-        config = OpenAIConfig(api_key="test-key")
-        assert config.api_key == "test-key"
-        assert config.model == "gpt-3.5-turbo"  # default value
-
-    def test_openai_config_with_custom_model(self):
-        """Test OpenAI config with custom model."""
-        config = OpenAIConfig(api_key="test-key", model="gpt-4")
-        assert config.api_key == "test-key"
-        assert config.model == "gpt-4"
-
-    def test_openai_config_validation_missing_api_key(self):
-        """Test validation error when API key is missing."""
-        with pytest.raises(ValidationError, match="api_key"):
-            OpenAIConfig()
-
-
-class TestClaudeConfig:
-    """Test cases for ClaudeConfig."""
-
-    def test_claude_config_basic(self):
-        """Test basic Claude config."""
-        config = ClaudeConfig(api_key="test-key")
-        assert config.api_key == "test-key"
-        assert config.model == "claude-3-sonnet-20240229"  # default value
-
-    def test_claude_config_with_custom_model(self):
-        """Test Claude config with custom model."""
-        config = ClaudeConfig(api_key="test-key", model="claude-3-opus-20240229")
-        assert config.api_key == "test-key"
-        assert config.model == "claude-3-opus-20240229"
-
-    def test_claude_config_validation_missing_api_key(self):
-        """Test validation error when API key is missing."""
-        with pytest.raises(ValidationError, match="api_key"):
-            ClaudeConfig()
-
-
-class TestLLMConfig:
-    """Test cases for LLMConfig."""
-
-    def test_llm_config_openai(self):
-        """Test LLM config with OpenAI provider."""
-        config = LLMConfig(provider="openai", openai=OpenAIConfig(api_key="test-key"))
-        assert config.provider == "openai"
-        assert config.openai.api_key == "test-key"
-        assert config.claude is None
-
-    def test_llm_config_claude(self):
-        """Test LLM config with Claude provider."""
-        config = LLMConfig(provider="claude", claude=ClaudeConfig(api_key="test-key"))
-        assert config.provider == "claude"
-        assert config.claude.api_key == "test-key"
-        assert config.openai is None
-
-    def test_llm_config_validation_invalid_provider(self):
-        """Test validation error with invalid provider."""
-        with pytest.raises(
-            ValidationError, match="Input should be 'openai' or 'claude'"
-        ):
-            LLMConfig(provider="invalid")
-
-    def test_llm_config_validation_missing_provider_config(self):
-        """Test validation error when provider config is missing."""
-        with pytest.raises(ValidationError, match="Provider configuration is required"):
-            LLMConfig(provider="openai")
+from ygents.config.models import YgentsConfig
 
 
 class TestYgentsConfig:
@@ -88,11 +8,22 @@ class TestYgentsConfig:
 
     def test_ygents_config_minimal(self):
         """Test minimal Ygents config."""
-        config = YgentsConfig(
-            llm=LLMConfig(provider="openai", openai=OpenAIConfig(api_key="test-key"))
-        )
+        config = YgentsConfig()
         assert config.mcp_servers == {}
-        assert config.llm.provider == "openai"
+        assert config.litellm == {}
+
+    def test_ygents_config_with_litellm(self):
+        """Test Ygents config with litellm configuration."""
+        config = YgentsConfig(
+            litellm={
+                "model": "gpt-3.5-turbo",
+                "api_key": "test-key",
+                "temperature": 0.7,
+            }
+        )
+        assert config.litellm["model"] == "gpt-3.5-turbo"
+        assert config.litellm["api_key"] == "test-key"
+        assert config.litellm["temperature"] == 0.7
 
     def test_ygents_config_with_mcp_servers(self):
         """Test Ygents config with MCP servers (raw dict format)."""
@@ -101,14 +32,9 @@ class TestYgentsConfig:
                 "weather": {"url": "https://weather.example.com"},
                 "assistant": {"command": "python", "args": ["server.py"]},
             },
-            llm=LLMConfig(provider="claude", claude=ClaudeConfig(api_key="test-key")),
+            litellm={"model": "claude-3-sonnet-20240229", "api_key": "test-key"},
         )
         assert len(config.mcp_servers) == 2
         assert config.mcp_servers["weather"]["url"] == "https://weather.example.com"
         assert config.mcp_servers["assistant"]["command"] == "python"
-        assert config.llm.provider == "claude"
-
-    def test_ygents_config_validation_missing_llm(self):
-        """Test validation error when LLM config is missing."""
-        with pytest.raises(ValidationError, match="llm"):
-            YgentsConfig()
+        assert config.litellm["model"] == "claude-3-sonnet-20240229"

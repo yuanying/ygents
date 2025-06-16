@@ -121,11 +121,10 @@ class Agent:
             )
 
             response = litellm.completion(
-                model=self._get_model_name(),
                 messages=messages_dict,
                 tools=tools_schema,
                 stream=True,
-                **self._get_llm_params(),
+                **self.config.litellm,
             )
 
             assistant_message = Message(role="assistant", content="", tool_calls=[])
@@ -275,33 +274,6 @@ class Agent:
             end_keywords = ["完了", "終了", "解決", "できました", "finished", "done"]
             return any(keyword in content for keyword in end_keywords)
         return False
-
-    def _get_model_name(self) -> str:
-        """設定からモデル名を取得"""
-        provider = self.config.llm.provider
-
-        if provider == "openai" and self.config.llm.openai:
-            return self.config.llm.openai.model
-        elif provider == "claude" and self.config.llm.claude:
-            return self.config.llm.claude.model
-        else:
-            raise ValueError(f"Unsupported provider: {provider}")
-
-    def _get_llm_params(self) -> Dict[str, Any]:
-        """LiteLLM呼び出しパラメータを生成"""
-        params: Dict[str, Any] = {
-            "temperature": 0.7,
-            "max_tokens": 1000,
-        }
-
-        provider = self.config.llm.provider
-
-        if provider == "openai" and self.config.llm.openai:
-            params["api_key"] = self.config.llm.openai.api_key
-        elif provider == "claude" and self.config.llm.claude:
-            params["api_key"] = self.config.llm.claude.api_key
-
-        return params
 
     def _get_tools_schema(self) -> List[Dict[str, Any]]:
         """MCPツールをLiteLLM tools形式に変換"""

@@ -4,16 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ygents.config.models import LLMConfig, OpenAIConfig, YgentsConfig
+from ygents.config.models import YgentsConfig
 
 
 @pytest.fixture
 def mock_agent_config():
     """Test agent configuration."""
     return YgentsConfig(
-        llm=LLMConfig(
-            provider="openai", openai=OpenAIConfig(api_key="test-key", model="gpt-4")
-        ),
+        litellm={"model": "openai/gpt-4", "api_key": "test-key"},
         mcp_servers={},
     )
 
@@ -22,9 +20,7 @@ def mock_agent_config():
 def mock_agent_config_with_mcp():
     """Test agent configuration with MCP servers."""
     return YgentsConfig(
-        llm=LLMConfig(
-            provider="openai", openai=OpenAIConfig(api_key="test-key", model="gpt-4")
-        ),
+        litellm={"model": "openai/gpt-4", "api_key": "test-key"},
         mcp_servers={"test_server": {}},
     )
 
