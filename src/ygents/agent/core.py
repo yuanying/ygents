@@ -1,8 +1,9 @@
 """Agent core module."""
 
-from typing import Optional, Dict, Any, List, AsyncGenerator
+from typing import Any, AsyncGenerator, Dict, List, Optional
+
 from ..config.models import YgentsConfig
-from .exceptions import AgentError, AgentConnectionError
+from .exceptions import AgentConnectionError, AgentError
 
 
 class Agent:
@@ -23,6 +24,7 @@ class Agent:
         if self.config.mcp_servers:
             try:
                 import fastmcp
+
                 fastmcp_config = {"mcpServers": self.config.mcp_servers}
                 self._mcp_client = fastmcp.Client(fastmcp_config)
                 await self._mcp_client.__aenter__()
@@ -45,15 +47,13 @@ class Agent:
         """利用可能なツール一覧を取得"""
         if self._mcp_client and self._mcp_client_connected:
             try:
-                return getattr(self, '_cached_tools', [])
+                return getattr(self, "_cached_tools", [])
             except Exception:
                 return []
         return []
 
     async def run(
-        self,
-        user_input: str,
-        abort_event: Optional[Any] = None
+        self, user_input: str, abort_event: Optional[Any] = None
     ) -> AsyncGenerator[Any, None]:
         """ユーザー入力に対して問題解決まで単純なcompletionループを実行
 
@@ -66,9 +66,7 @@ class Agent:
 
         while True:
             loop_completed = False
-            async for item in self.process_single_turn_with_tools(
-                self.messages
-            ):
+            async for item in self.process_single_turn_with_tools(self.messages):
                 yield item
 
                 if self._is_problem_solved(item):
@@ -92,16 +90,17 @@ class Agent:
             response = litellm.completion(
                 model=self._get_model_name(),
                 messages=messages,
-                tools=(self._get_tools_schema()
-                       if self._mcp_client_connected else None),
+                tools=(
+                    self._get_tools_schema() if self._mcp_client_connected else None
+                ),
                 stream=True,
-                **self._get_llm_params()
+                **self._get_llm_params(),
             )
 
             assistant_message: Dict[str, Any] = {
                 "role": "assistant",
                 "content": "",
-                "tool_calls": []
+                "tool_calls": [],
             }
 
             for chunk in response:
@@ -117,7 +116,7 @@ class Agent:
             # tool_callsが空の場合は削除
             if not assistant_message.get("tool_calls"):
                 assistant_message.pop("tool_calls", None)
-            
+
             self.messages.append(assistant_message)
 
             if assistant_message.get("tool_calls"):
@@ -138,51 +137,47 @@ class Agent:
             tool_name = tool_call.get("function", {}).get("name")
             arguments = tool_call.get("function", {}).get("arguments", {})
 
-            yield {
-                "type": "tool_input",
-                "tool_name": tool_name,
-                "arguments": arguments
-            }
+            yield {"type": "tool_input", "tool_name": tool_name, "arguments": arguments}
 
             try:
                 if self._mcp_client and self._mcp_client_connected:
-                    result = await self._mcp_client.call_tool(
-                        tool_name, arguments
-                    )
+                    result = await self._mcp_client.call_tool(tool_name, arguments)
 
-                    self.messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.get("id"),
-                        "content": str(result)
-                    })
+                    self.messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.get("id"),
+                            "content": str(result),
+                        }
+                    )
 
                     yield {
                         "type": "tool_result",
                         "tool_name": tool_name,
-                        "result": result
+                        "result": result,
                     }
                 else:
                     yield {
                         "type": "tool_error",
-                        "content": "MCPクライアントが利用できません"
+                        "content": "MCPクライアントが利用できません",
                     }
 
             except Exception as e:
                 error_msg = f"ツール実行エラー ({tool_name}): {e}"
-                self.messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.get("id"),
-                    "content": error_msg
-                })
+                self.messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.get("id"),
+                        "content": error_msg,
+                    }
+                )
                 yield {"type": "tool_error", "content": error_msg}
 
     def _is_problem_solved(self, item: Dict[str, Any]) -> bool:
         """問題解決判定（簡単な実装）"""
         if item.get("type") == "content":
             content = item.get("content", "").lower()
-            end_keywords = [
-                "完了", "終了", "解決", "できました", "finished", "done"
-            ]
+            end_keywords = ["完了", "終了", "解決", "できました", "finished", "done"]
             return any(keyword in content for keyword in end_keywords)
         return False
 
