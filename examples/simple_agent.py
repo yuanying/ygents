@@ -7,11 +7,28 @@ OpenAI APIキーを環境変数に設定してからご利用ください。
 
 使用方法:
     export OPENAI_API_KEY="your-openai-api-key"
-    python examples/simple_agent.py
+    python -W ignore examples/simple_agent.py
 """
 
-import asyncio
+# !/usr/bin/env python3
+
+# Warningsを最初に抑制
 import os
+import warnings
+
+os.environ["PYTHONWARNINGS"] = "ignore"
+warnings.simplefilter("ignore")
+# 全ての警告を抑制
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*")
+import logging
+
+# Rich/fastmcpのERRORログも抑制
+logging.getLogger("rich").setLevel(logging.CRITICAL)
+logging.getLogger("fastmcp").setLevel(logging.CRITICAL)
+
+import asyncio
 import sys
 from pathlib import Path
 
@@ -20,6 +37,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 from ygents.agent.core import Agent
+from ygents.agent.models import ContentChunk, ErrorMessage, StatusUpdate
 from ygents.config.models import LLMConfig, OpenAIConfig, YgentsConfig
 
 
@@ -63,12 +81,12 @@ async def simple_chat_example():
                 if loop_count > max_loops:
                     print("\n📊 デモのため処理を制限しました")
                     break
-                if chunk.get("type") == "content":
-                    print(chunk["content"], end="", flush=True)
-                elif chunk.get("type") == "error":
-                    print(f"\n❌ エラー: {chunk['content']}")
-                elif chunk.get("type") == "status":
-                    print(f"\n📊 ステータス: {chunk['content']}")
+                if isinstance(chunk, ContentChunk):
+                    print(chunk.content, end="", flush=True)
+                elif isinstance(chunk, ErrorMessage):
+                    print(f"\n❌ エラー: {chunk.content}")
+                elif isinstance(chunk, StatusUpdate):
+                    print(f"\n📊 ステータス: {chunk.content}")
 
             print("\n\n✅ 対話完了")
 
@@ -120,12 +138,12 @@ async def interactive_chat():
 
                     # Agent応答
                     async for chunk in agent.run(user_input_with_completion):
-                        if chunk.get("type") == "content":
-                            print(chunk["content"], end="", flush=True)
-                        elif chunk.get("type") == "error":
-                            print(f"\n❌ エラー: {chunk['content']}")
-                        elif chunk.get("type") == "status":
-                            print(f"\n📊 {chunk['content']}")
+                        if isinstance(chunk, ContentChunk):
+                            print(chunk.content, end="", flush=True)
+                        elif isinstance(chunk, ErrorMessage):
+                            print(f"\n❌ エラー: {chunk.content}")
+                        elif isinstance(chunk, StatusUpdate):
+                            print(f"\n📊 {chunk.content}")
 
                     print("\n")
 

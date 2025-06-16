@@ -10,11 +10,28 @@ Agent with MCP Example
 
 使用方法:
     export OPENAI_API_KEY="your-openai-api-key"
-    python examples/agent_with_mcp.py
+    python -W ignore examples/agent_with_mcp.py
 """
 
-import asyncio
+# !/usr/bin/env python3
+
+# Warningsを最初に抑制
 import os
+import warnings
+
+os.environ["PYTHONWARNINGS"] = "ignore"
+warnings.simplefilter("ignore")
+# 全ての警告を抑制
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*")
+import logging
+
+# Rich/fastmcpのERRORログも抑制
+logging.getLogger("rich").setLevel(logging.CRITICAL)
+logging.getLogger("fastmcp").setLevel(logging.CRITICAL)
+
+import asyncio
 import sys
 from pathlib import Path
 
@@ -23,6 +40,13 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 from ygents.agent.core import Agent
+from ygents.agent.models import (
+    ContentChunk,
+    ErrorMessage,
+    ToolError,
+    ToolInput,
+    ToolResult,
+)
 from ygents.config.models import LLMConfig, OpenAIConfig, YgentsConfig
 
 
@@ -98,10 +122,9 @@ async def mcp_agent_example():
         llm=LLMConfig(
             provider="openai",
             openai=OpenAIConfig(
-                api_key=os.getenv("OPENAI_API_KEY", ""), model="gpt-3.5-turbo"
+                api_key=os.getenv("OPENAI_API_KEY", ""), model="gpt-4o"
             ),
         ),
-        mcp_servers={"example_server": {}},  # InMemory serverは詳細設定不要
     )
 
     # APIキーの確認
@@ -150,17 +173,17 @@ async def mcp_agent_example():
 
                     try:
                         async for chunk in agent.run(question_with_completion):
-                            if chunk.get("type") == "content":
-                                print(chunk["content"], end="", flush=True)
-                            elif chunk.get("type") == "tool_input":
-                                print(f"\n🔧 ツール実行: {chunk['tool_name']}")
-                                print(f"   引数: {chunk['arguments']}")
-                            elif chunk.get("type") == "tool_result":
-                                print(f"✅ 結果: {chunk['result']}")
-                            elif chunk.get("type") == "tool_error":
-                                print(f"❌ ツールエラー: {chunk['content']}")
-                            elif chunk.get("type") == "error":
-                                print(f"\n❌ エラー: {chunk['content']}")
+                            if isinstance(chunk, ContentChunk):
+                                print(chunk.content, end="", flush=True)
+                            elif isinstance(chunk, ToolInput):
+                                print(f"\n🔧 ツール実行: {chunk.tool_name}")
+                                print(f"   引数: {chunk.arguments}")
+                            elif isinstance(chunk, ToolResult):
+                                print(f"✅ 結果: {chunk.result}")
+                            elif isinstance(chunk, ToolError):
+                                print(f"❌ ツールエラー: {chunk.content}")
+                            elif isinstance(chunk, ErrorMessage):
+                                print(f"\n❌ エラー: {chunk.content}")
 
                         print("")
 
@@ -190,7 +213,7 @@ async def interactive_mcp_chat():
         llm=LLMConfig(
             provider="openai",
             openai=OpenAIConfig(
-                api_key=os.getenv("OPENAI_API_KEY", ""), model="gpt-3.5-turbo"
+                api_key=os.getenv("OPENAI_API_KEY", ""), model="gpt-4o"
             ),
         ),
         mcp_servers={"example_server": {}},
@@ -229,16 +252,16 @@ async def interactive_mcp_chat():
                         print("Agent: ", end="", flush=True)
 
                         async for chunk in agent.run(user_input_with_completion):
-                            if chunk.get("type") == "content":
-                                print(chunk["content"], end="", flush=True)
-                            elif chunk.get("type") == "tool_input":
-                                print(f"\n🔧 {chunk['tool_name']} を実行中...")
-                            elif chunk.get("type") == "tool_result":
+                            if isinstance(chunk, ContentChunk):
+                                print(chunk.content, end="", flush=True)
+                            elif isinstance(chunk, ToolInput):
+                                print(f"\n🔧 {chunk.tool_name} を実行中...")
+                            elif isinstance(chunk, ToolResult):
                                 print("✅ 完了")
-                            elif chunk.get("type") == "tool_error":
-                                print(f"\n❌ ツールエラー: {chunk['content']}")
-                            elif chunk.get("type") == "error":
-                                print(f"\n❌ エラー: {chunk['content']}")
+                            elif isinstance(chunk, ToolError):
+                                print(f"\n❌ ツールエラー: {chunk.content}")
+                            elif isinstance(chunk, ErrorMessage):
+                                print(f"\n❌ エラー: {chunk.content}")
 
                         print("\n")
 
