@@ -4,7 +4,16 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from ..config.models import YgentsConfig
 from .exceptions import AgentConnectionError, AgentError
-from .models import Message
+from .models import (
+    AgentYieldItem,
+    ContentChunk,
+    ErrorMessage,
+    Message,
+    StatusUpdate,
+    ToolError,
+    ToolInput,
+    ToolResult,
+)
 
 
 class Agent:
@@ -55,7 +64,7 @@ class Agent:
 
     async def run(
         self, user_input: str, abort_event: Optional[Any] = None
-    ) -> AsyncGenerator[Any, None]:
+    ) -> AsyncGenerator[AgentYieldItem, None]:
         """ユーザー入力に対して問題解決まで単純なcompletionループを実行
 
         1. user_inputをmessagesに追加
@@ -78,12 +87,12 @@ class Agent:
                 break
 
             if abort_event and abort_event.is_set():
-                yield {"type": "status", "content": "処理が中断されました"}
+                yield StatusUpdate(content="処理が中断されました")
                 break
 
     async def process_single_turn_with_tools(
         self, messages: List[Message]
-    ) -> AsyncGenerator[Any, None]:
+    ) -> AsyncGenerator[AgentYieldItem, None]:
         """単一ターンでのLLM completion + ツール実行"""
         try:
             import litellm
@@ -107,7 +116,7 @@ class Agent:
                 if chunk.choices[0].delta.content:
                     content = chunk.choices[0].delta.content
                     assistant_message.content += content
-                    yield {"type": "content", "content": content}
+                    yield ContentChunk(content=content)
 
                 if chunk.choices[0].delta.tool_calls:
                     for tool_call in chunk.choices[0].delta.tool_calls:
@@ -122,18 +131,18 @@ class Agent:
                     yield tool_result
 
         except Exception as e:
-            yield {"type": "error", "content": f"エラーが発生しました: {e}"}
+            yield ErrorMessage(content=f"エラーが発生しました: {e}")
             raise AgentError(f"Completion failed: {e}") from e
 
     async def _execute_tool_calls(
         self, tool_calls: List[Dict[str, Any]]
-    ) -> AsyncGenerator[Any, None]:
+    ) -> AsyncGenerator[AgentYieldItem, None]:
         """ツール呼び出しを実行し、結果をyield"""
         for tool_call in tool_calls:
             tool_name = tool_call.get("function", {}).get("name")
             arguments = tool_call.get("function", {}).get("arguments", {})
 
-            yield {"type": "tool_input", "tool_name": tool_name, "arguments": arguments}
+            yield ToolInput(tool_name=tool_name, arguments=arguments)
 
             try:
                 if self._mcp_client and self._mcp_client_connected:
@@ -147,16 +156,9 @@ class Agent:
                         )
                     )
 
-                    yield {
-                        "type": "tool_result",
-                        "tool_name": tool_name,
-                        "result": result,
-                    }
+                    yield ToolResult(tool_name=tool_name, result=result)
                 else:
-                    yield {
-                        "type": "tool_error",
-                        "content": "MCPクライアントが利用できません",
-                    }
+                    yield ToolError(content="MCPクライアントが利用できません")
 
             except Exception as e:
                 error_msg = f"ツール実行エラー ({tool_name}): {e}"
@@ -167,12 +169,12 @@ class Agent:
                         content=error_msg,
                     )
                 )
-                yield {"type": "tool_error", "content": error_msg}
+                yield ToolError(content=error_msg)
 
-    def _is_problem_solved(self, item: Dict[str, Any]) -> bool:
+    def _is_problem_solved(self, item: AgentYieldItem) -> bool:
         """問題解決判定（簡単な実装）"""
-        if item.get("type") == "content":
-            content = item.get("content", "").lower()
+        if isinstance(item, ContentChunk):
+            content = item.content.lower()
             end_keywords = ["完了", "終了", "解決", "できました", "finished", "done"]
             return any(keyword in content for keyword in end_keywords)
         return False

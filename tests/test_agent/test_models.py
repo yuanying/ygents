@@ -1,6 +1,14 @@
 """Agent models tests."""
 
-from ygents.agent.models import Message
+from ygents.agent.models import (
+    ContentChunk,
+    ErrorMessage,
+    Message,
+    StatusUpdate,
+    ToolError,
+    ToolInput,
+    ToolResult,
+)
 
 
 class TestMessage:
@@ -79,3 +87,83 @@ class TestMessage:
         result = message.to_dict()
         expected = {"role": "system", "content": ""}
         assert result == expected
+
+
+class TestAgentYieldItems:
+    """Agent yield item tests."""
+
+    def test_content_chunk_creation(self):
+        """Test ContentChunk creation."""
+        chunk = ContentChunk(content="Hello world")
+        assert chunk.type == "content"
+        assert chunk.content == "Hello world"
+
+    def test_content_chunk_default(self):
+        """Test ContentChunk with defaults."""
+        chunk = ContentChunk()
+        assert chunk.type == "content"
+        assert chunk.content == ""
+
+    def test_tool_input_creation(self):
+        """Test ToolInput creation."""
+        tool_input = ToolInput(tool_name="get_weather", arguments={"city": "Tokyo"})
+        assert tool_input.type == "tool_input"
+        assert tool_input.tool_name == "get_weather"
+        assert tool_input.arguments == {"city": "Tokyo"}
+
+    def test_tool_input_default(self):
+        """Test ToolInput with defaults."""
+        tool_input = ToolInput()
+        assert tool_input.type == "tool_input"
+        assert tool_input.tool_name == ""
+        assert tool_input.arguments == {}
+
+    def test_tool_result_creation(self):
+        """Test ToolResult creation."""
+        tool_result = ToolResult(tool_name="get_weather", result="Sunny, 25°C")
+        assert tool_result.type == "tool_result"
+        assert tool_result.tool_name == "get_weather"
+        assert tool_result.result == "Sunny, 25°C"
+
+    def test_tool_result_default(self):
+        """Test ToolResult with defaults."""
+        tool_result = ToolResult()
+        assert tool_result.type == "tool_result"
+        assert tool_result.tool_name == ""
+        assert tool_result.result is None
+
+    def test_tool_error_creation(self):
+        """Test ToolError creation."""
+        tool_error = ToolError(content="Tool execution failed")
+        assert tool_error.type == "tool_error"
+        assert tool_error.content == "Tool execution failed"
+
+    def test_tool_error_default(self):
+        """Test ToolError with defaults."""
+        tool_error = ToolError()
+        assert tool_error.type == "tool_error"
+        assert tool_error.content == ""
+
+    def test_error_message_creation(self):
+        """Test ErrorMessage creation."""
+        error_msg = ErrorMessage(content="An error occurred")
+        assert error_msg.type == "error"
+        assert error_msg.content == "An error occurred"
+
+    def test_error_message_default(self):
+        """Test ErrorMessage with defaults."""
+        error_msg = ErrorMessage()
+        assert error_msg.type == "error"
+        assert error_msg.content == ""
+
+    def test_status_update_creation(self):
+        """Test StatusUpdate creation."""
+        status = StatusUpdate(content="Processing completed")
+        assert status.type == "status"
+        assert status.content == "Processing completed"
+
+    def test_status_update_default(self):
+        """Test StatusUpdate with defaults."""
+        status = StatusUpdate()
+        assert status.type == "status"
+        assert status.content == ""

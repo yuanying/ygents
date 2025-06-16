@@ -6,7 +6,7 @@ import pytest
 
 from ygents.agent.core import Agent
 from ygents.agent.exceptions import AgentError
-from ygents.agent.models import Message
+from ygents.agent.models import ContentChunk, Message, ToolInput, ToolResult
 
 
 @pytest.mark.asyncio
@@ -75,11 +75,11 @@ async def test_run_simple_completion(mock_agent_config, mock_litellm_streaming):
             results.append(chunk)
 
         # Check that streaming content is yielded
-        content_chunks = [c for c in results if c.get("type") == "content"]
+        content_chunks = [c for c in results if isinstance(c, ContentChunk)]
         assert len(content_chunks) > 0
 
         # Check full content
-        full_content = "".join(c["content"] for c in content_chunks)
+        full_content = "".join(c.content for c in content_chunks)
         assert "Hello world!" in full_content
 
         # Check messages are added
@@ -99,11 +99,11 @@ async def test_process_single_turn_streaming(mock_agent_config, mock_litellm_str
             results.append(chunk)
 
         # Check streaming content
-        content_chunks = [c for c in results if c.get("type") == "content"]
+        content_chunks = [c for c in results if isinstance(c, ContentChunk)]
         assert len(content_chunks) == 3
-        assert content_chunks[0]["content"] == "Hello"
-        assert content_chunks[1]["content"] == " world"
-        assert content_chunks[2]["content"] == "! 完了しました。"
+        assert content_chunks[0].content == "Hello"
+        assert content_chunks[1].content == " world"
+        assert content_chunks[2].content == "! 完了しました。"
 
 
 @pytest.mark.asyncio
@@ -127,13 +127,13 @@ async def test_execute_tool_calls(mock_agent_config_with_mcp):
                 results.append(chunk)
 
             # Check tool input and result
-            tool_inputs = [c for c in results if c.get("type") == "tool_input"]
-            tool_results = [c for c in results if c.get("type") == "tool_result"]
+            tool_inputs = [c for c in results if isinstance(c, ToolInput)]
+            tool_results = [c for c in results if isinstance(c, ToolResult)]
 
             assert len(tool_inputs) == 1
             assert len(tool_results) == 1
-            assert tool_inputs[0]["tool_name"] == "get_weather"
-            assert "Tokyo" in str(tool_results[0]["result"])
+            assert tool_inputs[0].tool_name == "get_weather"
+            assert "Tokyo" in str(tool_results[0].result)
 
 
 @pytest.mark.asyncio
@@ -142,20 +142,14 @@ async def test_problem_solved_detection(mock_agent_config):
     agent = Agent(mock_agent_config)
 
     # Test positive cases
-    assert agent._is_problem_solved(
-        {"type": "content", "content": "タスクは完了しました"}
-    )
-    assert agent._is_problem_solved(
-        {"type": "content", "content": "問題は解決されました"}
-    )
-    assert agent._is_problem_solved({"type": "content", "content": "Task is finished"})
+    assert agent._is_problem_solved(ContentChunk(content="タスクは完了しました"))
+    assert agent._is_problem_solved(ContentChunk(content="問題は解決されました"))
+    assert agent._is_problem_solved(ContentChunk(content="Task is finished"))
 
     # Test negative cases
-    assert not agent._is_problem_solved(
-        {"type": "content", "content": "まだ作業中です"}
-    )
-    assert not agent._is_problem_solved({"type": "tool_input", "content": "完了"})
-    assert not agent._is_problem_solved({"type": "content", "content": ""})
+    assert not agent._is_problem_solved(ContentChunk(content="まだ作業中です"))
+    assert not agent._is_problem_solved(ToolInput(tool_name="test"))
+    assert not agent._is_problem_solved(ContentChunk(content=""))
 
 
 @pytest.mark.asyncio
