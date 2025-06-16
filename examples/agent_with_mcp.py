@@ -47,7 +47,7 @@ from ygents.agent.models import (
     ToolInput,
     ToolResult,
 )
-from ygents.config.models import LLMConfig, OpenAIConfig, YgentsConfig
+from ygents.config.models import YgentsConfig
 
 
 def create_inmemory_mcp_config():
@@ -119,16 +119,14 @@ async def mcp_agent_example():
 
     # 設定を作成（MCPサーバーあり）
     config = YgentsConfig(
-        llm=LLMConfig(
-            provider="openai",
-            openai=OpenAIConfig(
-                api_key=os.getenv("OPENAI_API_KEY", ""), model="gpt-4o"
-            ),
-        ),
+        litellm={
+            "model": "openai/gpt-4o",
+            "api_key": os.getenv("OPENAI_API_KEY", "")
+        },
     )
 
     # APIキーの確認
-    if not config.llm.openai.api_key:
+    if not config.litellm.get("api_key"):
         print("❌ エラー: OPENAI_API_KEYが設定されていません")
         print("以下のコマンドでAPIキーを設定してください:")
         print("export OPENAI_API_KEY='your-openai-api-key'")
@@ -210,16 +208,14 @@ async def interactive_mcp_chat():
 
     # 設定を作成
     config = YgentsConfig(
-        llm=LLMConfig(
-            provider="openai",
-            openai=OpenAIConfig(
-                api_key=os.getenv("OPENAI_API_KEY", ""), model="gpt-4o"
-            ),
-        ),
+        litellm={
+            "model": "openai/gpt-4o",
+            "api_key": os.getenv("OPENAI_API_KEY", "")
+        },
         mcp_servers={"example_server": {}},
     )
 
-    if not config.llm.openai.api_key:
+    if not config.litellm.get("api_key"):
         print("❌ エラー: OPENAI_API_KEYが設定されていません")
         return
 

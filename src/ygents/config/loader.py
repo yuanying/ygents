@@ -99,19 +99,15 @@ class ConfigLoader:
         # Handle OpenAI API key override
         openai_key = os.getenv("OPENAI_API_KEY")
         if openai_key:
-            if "llm" not in config:
-                config["llm"] = {}
-            if "openai" not in config["llm"]:
-                config["llm"]["openai"] = {}
-            config["llm"]["openai"]["api_key"] = openai_key
+            if "litellm" not in config:
+                config["litellm"] = {}
+            config["litellm"]["api_key"] = openai_key
 
-        # Handle Claude API key override
+        # Handle Claude API key override (Anthropic)
         claude_key = os.getenv("ANTHROPIC_API_KEY")
         if claude_key:
-            if "llm" not in config:
-                config["llm"] = {}
-            if "claude" not in config["llm"]:
-                config["llm"]["claude"] = {}
-            config["llm"]["claude"]["api_key"] = claude_key
+            if "litellm" not in config:
+                config["litellm"] = {}
+            config["litellm"]["api_key"] = claude_key
 
         return config
