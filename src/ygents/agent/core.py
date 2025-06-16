@@ -129,7 +129,9 @@ class Agent:
             )
 
             assistant_message = Message(role="assistant", content="", tool_calls=[])
-            tool_calls_accumulator: Dict[str, Dict[str, Any]] = {}  # tool_call_id -> tool_call 辞書
+            tool_calls_accumulator: Dict[str, Dict[str, Any]] = (
+                {}
+            )  # tool_call_id -> tool_call 辞書
 
             for chunk in response:
                 if chunk.choices[0].delta.content:
@@ -158,13 +160,19 @@ class Agent:
                                         hasattr(chunk_tool_call.function, "name")
                                         and chunk_tool_call.function.name
                                     ):
-                                        tool_calls_accumulator[last_tool_call_id]["function"]["name"] = chunk_tool_call.function.name
+                                        tool_calls_accumulator[last_tool_call_id][
+                                            "function"
+                                        ]["name"] = chunk_tool_call.function.name
 
                                     if (
                                         hasattr(chunk_tool_call.function, "arguments")
                                         and chunk_tool_call.function.arguments
                                     ):
-                                        tool_calls_accumulator[last_tool_call_id]["function"]["arguments"] += chunk_tool_call.function.arguments
+                                        tool_calls_accumulator[last_tool_call_id][
+                                            "function"
+                                        ][
+                                            "arguments"
+                                        ] += chunk_tool_call.function.arguments
                             continue
 
                         if tool_call_id not in tool_calls_accumulator:
@@ -184,13 +192,17 @@ class Agent:
                                 hasattr(chunk_tool_call.function, "name")
                                 and chunk_tool_call.function.name
                             ):
-                                tool_calls_accumulator[tool_call_id]["function"]["name"] = chunk_tool_call.function.name
+                                tool_calls_accumulator[tool_call_id]["function"][
+                                    "name"
+                                ] = chunk_tool_call.function.name
 
                             if (
                                 hasattr(chunk_tool_call.function, "arguments")
                                 and chunk_tool_call.function.arguments
                             ):
-                                tool_calls_accumulator[tool_call_id]["function"]["arguments"] += chunk_tool_call.function.arguments
+                                tool_calls_accumulator[tool_call_id]["function"][
+                                    "arguments"
+                                ] += chunk_tool_call.function.arguments
 
             # 累積されたtool_callsをメッセージに設定
             assistant_message.tool_calls = list(tool_calls_accumulator.values())
