@@ -1,8 +1,10 @@
 """Agent test fixtures."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-from ygents.config.models import YgentsConfig, LLMConfig, OpenAIConfig, ClaudeConfig
+
+from ygents.config.models import LLMConfig, OpenAIConfig, YgentsConfig
 
 
 @pytest.fixture
@@ -10,10 +12,9 @@ def mock_agent_config():
     """Test agent configuration."""
     return YgentsConfig(
         llm=LLMConfig(
-            provider="openai",
-            openai=OpenAIConfig(api_key="test-key", model="gpt-4")
+            provider="openai", openai=OpenAIConfig(api_key="test-key", model="gpt-4")
         ),
-        mcp_servers={}
+        mcp_servers={},
     )
 
 
@@ -22,18 +23,16 @@ def mock_agent_config_with_mcp():
     """Test agent configuration with MCP servers."""
     return YgentsConfig(
         llm=LLMConfig(
-            provider="openai",
-            openai=OpenAIConfig(api_key="test-key", model="gpt-4")
+            provider="openai", openai=OpenAIConfig(api_key="test-key", model="gpt-4")
         ),
-        mcp_servers={
-            "test_server": {}
-        }
+        mcp_servers={"test_server": {}},
     )
 
 
 @pytest.fixture
 def mock_litellm_streaming():
     """Mock LiteLLM streaming response."""
+
     class MockChoice:
         def __init__(self, content=None, tool_calls=None):
             self.delta = MagicMock()
@@ -51,11 +50,16 @@ def mock_litellm_streaming():
                 yield MockChunk("Hello")
                 yield MockChunk(" world")
                 yield MockChunk("! 完了しました。")  # 問題解決キーワード
+
             return chunk_generator()
         else:
             # 非ストリーミングの場合
-            return MagicMock(choices=[MagicMock(message=MagicMock(content="Hello world! 完了しました。"))])
-    
+            return MagicMock(
+                choices=[
+                    MagicMock(message=MagicMock(content="Hello world! 完了しました。"))
+                ]
+            )
+
     with patch("litellm.completion", side_effect=mock_completion):
         yield
 
@@ -63,6 +67,7 @@ def mock_litellm_streaming():
 @pytest.fixture
 def mock_litellm_with_tools():
     """Mock LiteLLM response with tool calls."""
+
     class MockChoice:
         def __init__(self, content=None, tool_calls=None):
             self.delta = MagicMock()
@@ -75,12 +80,20 @@ def mock_litellm_with_tools():
 
     def mock_completion(*args, **kwargs):
         if kwargs.get("stream", False):
+
             def chunk_generator():
                 yield MockChunk("天気を確認します")
                 yield MockChunk("。完了しました。")
+
             return chunk_generator()
         else:
-            return MagicMock(choices=[MagicMock(message=MagicMock(content="天気を確認します。完了しました。"))])
-    
+            return MagicMock(
+                choices=[
+                    MagicMock(
+                        message=MagicMock(content="天気を確認します。完了しました。")
+                    )
+                ]
+            )
+
     with patch("litellm.completion", side_effect=mock_completion):
         yield
