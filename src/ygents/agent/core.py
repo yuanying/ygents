@@ -75,15 +75,24 @@ class Agent:
         self.messages.append(Message(role="user", content=user_input))
 
         while True:
-            loop_completed = False
+            problem_solved_items = []
+
+            # process_single_turn_with_tools を完全に実行し、問題解決アイテムを記録
             async for item in self.process_single_turn_with_tools(self.messages):
                 yield item
-
                 if self._is_problem_solved(item):
-                    loop_completed = True
-                    break
+                    problem_solved_items.append(item)
 
-            if loop_completed:
+            # process_single_turn_with_tools実行後、問題解決アイテムがあった場合は終了
+            if problem_solved_items:
+                break
+
+            # 最後のメッセージがassistantの応答でtool_callsがない場合はループ終了
+            if (
+                self.messages
+                and self.messages[-1].role == "assistant"
+                and not self.messages[-1].tool_calls
+            ):
                 break
 
             if abort_event and abort_event.is_set():
@@ -122,6 +131,7 @@ class Agent:
                     for tool_call in chunk.choices[0].delta.tool_calls:
                         assistant_message.tool_calls.append(tool_call)
 
+            # ストリーミング完了後、アシスタントメッセージを追加
             self.messages.append(assistant_message)
 
             if assistant_message.tool_calls:

@@ -20,6 +20,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 from ygents.agent.core import Agent
+from ygents.agent.models import ContentChunk, ErrorMessage, StatusUpdate
 from ygents.config.models import LLMConfig, OpenAIConfig, YgentsConfig
 
 
@@ -63,12 +64,12 @@ async def simple_chat_example():
                 if loop_count > max_loops:
                     print("\n📊 デモのため処理を制限しました")
                     break
-                if chunk.get("type") == "content":
-                    print(chunk["content"], end="", flush=True)
-                elif chunk.get("type") == "error":
-                    print(f"\n❌ エラー: {chunk['content']}")
-                elif chunk.get("type") == "status":
-                    print(f"\n📊 ステータス: {chunk['content']}")
+                if isinstance(chunk, ContentChunk):
+                    print(chunk.content, end="", flush=True)
+                elif isinstance(chunk, ErrorMessage):
+                    print(f"\n❌ エラー: {chunk.content}")
+                elif isinstance(chunk, StatusUpdate):
+                    print(f"\n📊 ステータス: {chunk.content}")
 
             print("\n\n✅ 対話完了")
 
@@ -120,12 +121,12 @@ async def interactive_chat():
 
                     # Agent応答
                     async for chunk in agent.run(user_input_with_completion):
-                        if chunk.get("type") == "content":
-                            print(chunk["content"], end="", flush=True)
-                        elif chunk.get("type") == "error":
-                            print(f"\n❌ エラー: {chunk['content']}")
-                        elif chunk.get("type") == "status":
-                            print(f"\n📊 {chunk['content']}")
+                        if isinstance(chunk, ContentChunk):
+                            print(chunk.content, end="", flush=True)
+                        elif isinstance(chunk, ErrorMessage):
+                            print(f"\n❌ エラー: {chunk.content}")
+                        elif isinstance(chunk, StatusUpdate):
+                            print(f"\n📊 {chunk.content}")
 
                     print("\n")
 

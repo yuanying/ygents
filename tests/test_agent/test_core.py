@@ -87,6 +87,12 @@ async def test_run_simple_completion(mock_agent_config, mock_litellm_streaming):
         assert agent.messages[0].role == "user"
         assert agent.messages[0].content == "Hello"
 
+        # Check that agent response was added and has no tool_calls
+        assert len(agent.messages) == 2  # user + assistant
+        assert agent.messages[-1].role == "assistant"
+        # Should be empty list, causing loop termination
+        assert not agent.messages[-1].tool_calls
+
 
 @pytest.mark.asyncio
 async def test_process_single_turn_streaming(mock_agent_config, mock_litellm_streaming):
@@ -150,6 +156,32 @@ async def test_problem_solved_detection(mock_agent_config):
     assert not agent._is_problem_solved(ContentChunk(content="まだ作業中です"))
     assert not agent._is_problem_solved(ToolInput(tool_name="test"))
     assert not agent._is_problem_solved(ContentChunk(content=""))
+
+
+@pytest.mark.asyncio
+async def test_run_loop_termination_without_tools(
+    mock_agent_config, mock_litellm_streaming
+):
+    """Test that run loop terminates when assistant responds without tool calls."""
+    async with Agent(mock_agent_config) as agent:
+        results = []
+        async for chunk in agent.run("Hello"):
+            results.append(chunk)
+
+        # Should have exactly 2 messages: user + assistant
+        assert len(agent.messages) == 2
+        assert agent.messages[0].role == "user"
+        assert agent.messages[1].role == "assistant"
+        # No tool calls, so loop should terminate
+        assert not agent.messages[1].tool_calls
+
+        # Should have yielded content chunks
+        content_chunks = [c for c in results if isinstance(c, ContentChunk)]
+        assert len(content_chunks) > 0
+
+        # Should terminate due to problem solved detection (完了しました)
+        full_content = "".join(c.content for c in content_chunks)
+        assert "完了しました" in full_content
 
 
 @pytest.mark.asyncio
