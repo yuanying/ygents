@@ -114,6 +114,10 @@ class Agent:
                     for tool_call in chunk.choices[0].delta.tool_calls:
                         assistant_message["tool_calls"].append(tool_call)
 
+            # tool_callsが空の場合は削除
+            if not assistant_message.get("tool_calls"):
+                assistant_message.pop("tool_calls", None)
+            
             self.messages.append(assistant_message)
 
             if assistant_message.get("tool_calls"):
