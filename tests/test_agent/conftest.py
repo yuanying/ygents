@@ -125,31 +125,44 @@ def mock_litellm_streaming_tool_calls():
 
     def mock_completion(*args, **kwargs):
         if kwargs.get("stream", False):
+
             def chunk_generator():
                 # First chunk: start tool call with ID and function name
-                yield MockChunk(tool_calls=[
-                    MockToolCall(
-                        id="tool_call_1",
-                        function=MockToolCallFunction(name="get_weather", arguments="")
-                    )
-                ])
-                
+                yield MockChunk(
+                    tool_calls=[
+                        MockToolCall(
+                            id="tool_call_1",
+                            function=MockToolCallFunction(
+                                name="get_weather", arguments=""
+                            ),
+                        )
+                    ]
+                )
+
                 # Second chunk: partial arguments
-                yield MockChunk(tool_calls=[
-                    MockToolCall(
-                        id="tool_call_1",
-                        function=MockToolCallFunction(name=None, arguments='{"city": ')
-                    )
-                ])
-                
+                yield MockChunk(
+                    tool_calls=[
+                        MockToolCall(
+                            id="tool_call_1",
+                            function=MockToolCallFunction(
+                                name=None, arguments='{"city": '
+                            ),
+                        )
+                    ]
+                )
+
                 # Third chunk: remaining arguments
-                yield MockChunk(tool_calls=[
-                    MockToolCall(
-                        id="tool_call_1",
-                        function=MockToolCallFunction(name=None, arguments='"Tokyo"}')
-                    )
-                ])
-                
+                yield MockChunk(
+                    tool_calls=[
+                        MockToolCall(
+                            id="tool_call_1",
+                            function=MockToolCallFunction(
+                                name=None, arguments='"Tokyo"}'
+                            ),
+                        )
+                    ]
+                )
+
                 # Final chunk: content response
                 yield MockChunk("天気情報を取得しました。完了しました。")
 
@@ -160,10 +173,15 @@ def mock_litellm_streaming_tool_calls():
                     MagicMock(
                         message=MagicMock(
                             content="天気情報を取得しました。完了しました。",
-                            tool_calls=[{
-                                "id": "tool_call_1",
-                                "function": {"name": "get_weather", "arguments": '{"city": "Tokyo"}'}
-                            }]
+                            tool_calls=[
+                                {
+                                    "id": "tool_call_1",
+                                    "function": {
+                                        "name": "get_weather",
+                                        "arguments": '{"city": "Tokyo"}',
+                                    },
+                                }
+                            ],
                         )
                     )
                 ]

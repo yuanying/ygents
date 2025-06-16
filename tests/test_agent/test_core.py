@@ -146,15 +146,14 @@ async def test_execute_tool_calls(mock_agent_config_with_mcp):
 async def test_tool_calls_json_arguments_parsing():
     """Test tool calls with JSON string arguments parsing."""
     from ygents.config.models import LLMConfig, OpenAIConfig, YgentsConfig
-    
+
     config = YgentsConfig(
         llm=LLMConfig(
-            provider="openai", 
-            openai=OpenAIConfig(api_key="test-key", model="gpt-4")
+            provider="openai", openai=OpenAIConfig(api_key="test-key", model="gpt-4")
         ),
         mcp_servers={"test_server": {}},
     )
-    
+
     with patch("fastmcp.Client") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value = mock_client
@@ -163,14 +162,14 @@ async def test_tool_calls_json_arguments_parsing():
         async with Agent(config) as agent:
             agent._mcp_client = mock_client
             agent._mcp_client_connected = True
-            
+
             # JSON文字列としてargumentsが来る場合のテスト
             tool_calls = [
                 {
                     "id": "tool_call_1",
                     "function": {
-                        "name": "get_weather", 
-                        "arguments": '{"city": "Tokyo", "unit": "celsius"}'
+                        "name": "get_weather",
+                        "arguments": '{"city": "Tokyo", "unit": "celsius"}',
                     },
                 }
             ]
@@ -184,11 +183,10 @@ async def test_tool_calls_json_arguments_parsing():
             assert len(tool_inputs) == 1
             assert tool_inputs[0].tool_name == "get_weather"
             assert tool_inputs[0].arguments == {"city": "Tokyo", "unit": "celsius"}
-            
+
             # Verify mock was called with parsed arguments
             mock_client.call_tool.assert_called_once_with(
-                "get_weather", 
-                {"city": "Tokyo", "unit": "celsius"}
+                "get_weather", {"city": "Tokyo", "unit": "celsius"}
             )
 
 
@@ -320,17 +318,15 @@ async def test_get_tools_schema_with_mcp(mock_agent_config_with_mcp):
     with patch("fastmcp.Client") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value = mock_client
-        
+
         # Mock tool with description and input_schema
         mock_tool = MagicMock()
         mock_tool.name = "get_weather"
         mock_tool.description = "Get weather for a city"
         mock_tool.input_schema = {
             "type": "object",
-            "properties": {
-                "city": {"type": "string", "description": "City name"}
-            },
-            "required": ["city"]
+            "properties": {"city": {"type": "string", "description": "City name"}},
+            "required": ["city"],
         }
         mock_client.list_tools.return_value = [mock_tool]
 
@@ -340,7 +336,7 @@ async def test_get_tools_schema_with_mcp(mock_agent_config_with_mcp):
         agent._cached_tools = [mock_tool]
 
         schema = agent._get_tools_schema()
-        
+
         assert len(schema) == 1
         assert schema[0]["type"] == "function"
         assert schema[0]["function"]["name"] == "get_weather"
@@ -368,13 +364,15 @@ async def test_cache_available_tools(mock_agent_config_with_mcp):
 
 
 @pytest.mark.asyncio
-async def test_streaming_tool_calls_accumulation(mock_agent_config_with_mcp, mock_litellm_streaming_tool_calls):
+async def test_streaming_tool_calls_accumulation(
+    mock_agent_config_with_mcp, mock_litellm_streaming_tool_calls
+):
     """Test streaming tool calls accumulation across chunks."""
     with patch("fastmcp.Client") as mock_client_class:
         mock_client = AsyncMock()
         mock_client_class.return_value = mock_client
         mock_client.call_tool.return_value = "Tokyo: Sunny, 25°C"
-        
+
         # Mock tool schema
         mock_tool = MagicMock()
         mock_tool.name = "get_weather"
@@ -382,7 +380,7 @@ async def test_streaming_tool_calls_accumulation(mock_agent_config_with_mcp, moc
         mock_tool.input_schema = {
             "type": "object",
             "properties": {"city": {"type": "string"}},
-            "required": ["city"]
+            "required": ["city"],
         }
         mock_client.list_tools.return_value = [mock_tool]
 
@@ -407,13 +405,12 @@ async def test_streaming_tool_calls_accumulation(mock_agent_config_with_mcp, moc
             # Check that tool was called with correct arguments
             assert tool_inputs[0].tool_name == "get_weather"
             assert tool_inputs[0].arguments == {"city": "Tokyo"}
-            
+
             # Verify MCP client was called with parsed arguments
             mock_client.call_tool.assert_called_once_with(
-                "get_weather", 
-                {"city": "Tokyo"}
+                "get_weather", {"city": "Tokyo"}
             )
-            
+
             # Check that assistant message was correctly constructed
             assert len(agent.messages) >= 2  # user + assistant messages
             assistant_msg = None
@@ -421,9 +418,12 @@ async def test_streaming_tool_calls_accumulation(mock_agent_config_with_mcp, moc
                 if msg.role == "assistant" and msg.tool_calls:
                     assistant_msg = msg
                     break
-            
+
             assert assistant_msg is not None
             assert len(assistant_msg.tool_calls) == 1
             assert assistant_msg.tool_calls[0]["id"] == "tool_call_1"
             assert assistant_msg.tool_calls[0]["function"]["name"] == "get_weather"
-            assert assistant_msg.tool_calls[0]["function"]["arguments"] == '{"city": "Tokyo"}'
+            assert (
+                assistant_msg.tool_calls[0]["function"]["arguments"]
+                == '{"city": "Tokyo"}'
+            )
