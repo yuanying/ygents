@@ -145,12 +145,10 @@ async def test_execute_tool_calls(mock_agent_config_with_mcp):
 @pytest.mark.asyncio
 async def test_tool_calls_json_arguments_parsing():
     """Test tool calls with JSON string arguments parsing."""
-    from ygents.config.models import LLMConfig, OpenAIConfig, YgentsConfig
+    from ygents.config.models import YgentsConfig
 
     config = YgentsConfig(
-        llm=LLMConfig(
-            provider="openai", openai=OpenAIConfig(api_key="test-key", model="gpt-4")
-        ),
+        litellm={"model": "openai/gpt-4", "api_key": "test-key"},
         mcp_servers={"test_server": {}},
     )
 
@@ -266,42 +264,6 @@ async def test_abort_event(mock_agent_config, mock_litellm_streaming):
         # the problem might be solved normally
         # In either case, we should have some results
         assert len(results) > 0
-
-
-@pytest.mark.asyncio
-async def test_get_model_name(mock_agent_config):
-    """Test model name retrieval."""
-    agent = Agent(mock_agent_config)
-    assert agent._get_model_name() == "gpt-4"
-
-
-@pytest.mark.asyncio
-async def test_get_model_name_claude():
-    """Test model name retrieval for Claude."""
-    from ygents.config.models import ClaudeConfig, LLMConfig, YgentsConfig
-
-    config = YgentsConfig(
-        llm=LLMConfig(
-            provider="claude",
-            claude=ClaudeConfig(api_key="test-key", model="claude-3-sonnet-20240229"),
-        ),
-        mcp_servers={},
-    )
-
-    agent = Agent(config)
-    assert agent._get_model_name() == "claude-3-sonnet-20240229"
-
-
-@pytest.mark.asyncio
-async def test_get_llm_params(mock_agent_config):
-    """Test LLM parameters generation."""
-    agent = Agent(mock_agent_config)
-    params = agent._get_llm_params()
-
-    assert "temperature" in params
-    assert "max_tokens" in params
-    assert "api_key" in params
-    assert params["api_key"] == "test-key"
 
 
 @pytest.mark.asyncio

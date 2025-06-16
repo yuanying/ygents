@@ -96,18 +96,30 @@ class ConfigLoader:
         # Create a deep copy to avoid modifying the original
         config = dict(config_dict)
 
-        # Handle OpenAI API key override
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key:
-            if "litellm" not in config:
-                config["litellm"] = {}
-            config["litellm"]["api_key"] = openai_key
+        # Handle API key override based on model name
+        if "litellm" in config and "model" in config["litellm"]:
+            model_name = config["litellm"]["model"]
 
-        # Handle Claude API key override (Anthropic)
-        claude_key = os.getenv("ANTHROPIC_API_KEY")
-        if claude_key:
-            if "litellm" not in config:
-                config["litellm"] = {}
-            config["litellm"]["api_key"] = claude_key
+            if model_name.startswith("openai"):
+                openai_key = os.getenv("OPENAI_API_KEY")
+                if openai_key:
+                    config["litellm"]["api_key"] = openai_key
+            elif model_name.startswith("anthropic"):
+                claude_key = os.getenv("ANTHROPIC_API_KEY")
+                if claude_key:
+                    config["litellm"]["api_key"] = claude_key
+        else:
+            # Fallback: try both keys if no model specified
+            openai_key = os.getenv("OPENAI_API_KEY")
+            claude_key = os.getenv("ANTHROPIC_API_KEY")
+
+            if openai_key:
+                if "litellm" not in config:
+                    config["litellm"] = {}
+                config["litellm"]["api_key"] = openai_key
+            elif claude_key:
+                if "litellm" not in config:
+                    config["litellm"] = {}
+                config["litellm"]["api_key"] = claude_key
 
         return config

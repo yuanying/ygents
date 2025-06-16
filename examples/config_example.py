@@ -14,7 +14,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 from ygents.config.loader import ConfigLoader
-from ygents.config.models import ClaudeConfig, LLMConfig, OpenAIConfig, YgentsConfig
+from ygents.config.models import YgentsConfig
 
 
 def create_example_config_file():
@@ -22,14 +22,12 @@ def create_example_config_file():
     config_content = """# Ygents設定ファイル例
 # 環境変数も利用可能です
 
-llm:
-  provider: "openai"  # "openai" または "claude"
-  openai:
-    api_key: "${OPENAI_API_KEY}"  # 環境変数から読み込み
-    model: "gpt-3.5-turbo"
-  claude:
-    api_key: "${ANTHROPIC_API_KEY}"  # 環境変数から読み込み
-    model: "claude-3-sonnet-20240229"
+# LiteLLM設定 - 任意のプロバイダーに対応
+litellm:
+  model: "openai/gpt-3.5-turbo"  # または "anthropic/claude-3-sonnet-20240229"
+  api_key: "${OPENAI_API_KEY}"  # 環境変数から読み込み
+  temperature: 0.7
+  max_tokens: 1000
 
 # MCPサーバー設定（将来の拡張用）
 mcpServers: {}
@@ -55,37 +53,37 @@ def example_direct_config():
 
     # OpenAI設定例
     openai_config = YgentsConfig(
-        llm=LLMConfig(
-            provider="openai",
-            openai=OpenAIConfig(
-                api_key=os.getenv("OPENAI_API_KEY", "your-openai-key"),
-                model="gpt-3.5-turbo",
-            ),
-        ),
+        litellm={
+            "model": "openai/gpt-3.5-turbo",
+            "api_key": os.getenv("OPENAI_API_KEY", "your-openai-key"),
+            "temperature": 0.7,
+        },
         mcp_servers={},
     )
 
     print("OpenAI設定:")
-    print(f"  Provider: {openai_config.llm.provider}")
-    print(f"  Model: {openai_config.llm.openai.model}")
-    print(f"  API Key: {'設定済み' if openai_config.llm.openai.api_key else '未設定'}")
+    print(f"  Model: {openai_config.litellm.get('model')}")
+    print(
+        f"  API Key: {'設定済み' if openai_config.litellm.get('api_key') else '未設定'}"
+    )
+    print(f"  Temperature: {openai_config.litellm.get('temperature')}")
 
     # Claude設定例
     claude_config = YgentsConfig(
-        llm=LLMConfig(
-            provider="claude",
-            claude=ClaudeConfig(
-                api_key=os.getenv("ANTHROPIC_API_KEY", "your-claude-key"),
-                model="claude-3-sonnet-20240229",
-            ),
-        ),
+        litellm={
+            "model": "anthropic/claude-3-sonnet-20240229",
+            "api_key": os.getenv("ANTHROPIC_API_KEY", "your-claude-key"),
+            "temperature": 0.7,
+        },
         mcp_servers={},
     )
 
     print("\nClaude設定:")
-    print(f"  Provider: {claude_config.llm.provider}")
-    print(f"  Model: {claude_config.llm.claude.model}")
-    print(f"  API Key: {'設定済み' if claude_config.llm.claude.api_key else '未設定'}")
+    print(f"  Model: {claude_config.litellm.get('model')}")
+    print(
+        f"  API Key: {'設定済み' if claude_config.litellm.get('api_key') else '未設定'}"
+    )
+    print(f"  Temperature: {claude_config.litellm.get('temperature')}")
 
 
 def example_file_config():
@@ -102,20 +100,9 @@ def example_file_config():
         config = loader.load_from_file(str(config_path))
 
         print("設定ファイルから読み込み成功:")
-        print(f"  Provider: {config.llm.provider}")
-
-        if config.llm.provider == "openai" and config.llm.openai:
-            print(f"  OpenAI Model: {config.llm.openai.model}")
-            print(
-                f"  OpenAI API Key: {'設定済み' if config.llm.openai.api_key else '未設定'}"
-            )
-
-        if config.llm.provider == "claude" and config.llm.claude:
-            print(f"  Claude Model: {config.llm.claude.model}")
-            print(
-                f"  Claude API Key: {'設定済み' if config.llm.claude.api_key else '未設定'}"
-            )
-
+        print(f"  Model: {config.litellm.get('model', '未設定')}")
+        print(f"  API Key: {'設定済み' if config.litellm.get('api_key') else '未設定'}")
+        print(f"  Temperature: {config.litellm.get('temperature', '未設定')}")
         print(f"  MCP Servers: {len(config.mcp_servers)}個")
 
     except Exception as e:
@@ -135,10 +122,11 @@ def example_validation():
     # 正常な設定
     try:
         YgentsConfig(
-            llm=LLMConfig(
-                provider="openai",
-                openai=OpenAIConfig(api_key="test-key", model="gpt-3.5-turbo"),
-            ),
+            litellm={
+                "model": "openai/gpt-3.5-turbo",
+                "api_key": "test-key",
+                "temperature": 0.7,
+            },
             mcp_servers={},
         )
         print("✅ 正常な設定: バリデーション通過")
@@ -146,22 +134,28 @@ def example_validation():
     except Exception as e:
         print(f"❌ 正常な設定でエラー: {e}")
 
-    # 不正な設定（プロバイダー設定不一致）
+    # 空の設定でもOK
     try:
-        YgentsConfig(
-            llm=LLMConfig(
-                provider="openai",  # openaiを指定
-                claude=ClaudeConfig(  # でもclaude設定を提供
-                    api_key="test-key", model="claude-3-sonnet-20240229"
-                ),
-                # openai設定がない
-            ),
-            mcp_servers={},
-        )
-        print("❌ 不正な設定がバリデーションを通過してしまいました")
+        YgentsConfig()
+        print("✅ 空の設定: バリデーション通過（litellmは柔軟）")
 
     except Exception as e:
-        print(f"✅ 不正な設定: 期待通りエラー - {e}")
+        print(f"❌ 空の設定でエラー: {e}")
+
+    # 任意の設定でもOK
+    try:
+        YgentsConfig(
+            litellm={
+                "model": "custom/model",
+                "custom_parameter": "value",
+                "temperature": 0.8,
+            },
+            mcp_servers={},
+        )
+        print("✅ カスタム設定: バリデーション通過（litellmは任意のパラメータ対応）")
+
+    except Exception as e:
+        print(f"❌ カスタム設定でエラー: {e}")
 
 
 def main():
@@ -181,7 +175,8 @@ def main():
     print("\n💡 ヒント:")
     print("- 環境変数でAPIキーを設定: export OPENAI_API_KEY='your-key'")
     print('- 設定ファイルで環境変数参照: api_key: "${OPENAI_API_KEY}"')
-    print("- プロバイダーに応じた設定が必要です")
+    print("- litellmは任意のプロバイダーと設定に対応します")
+    print("- モデル名の形式: openai/gpt-4, anthropic/claude-3-sonnet-20240229")
 
 
 if __name__ == "__main__":
