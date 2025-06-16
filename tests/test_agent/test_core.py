@@ -6,6 +6,7 @@ import pytest
 
 from ygents.agent.core import Agent
 from ygents.agent.exceptions import AgentError
+from ygents.agent.models import Message
 
 
 @pytest.mark.asyncio
@@ -83,15 +84,15 @@ async def test_run_simple_completion(mock_agent_config, mock_litellm_streaming):
 
         # Check messages are added
         assert len(agent.messages) >= 1
-        assert agent.messages[0]["role"] == "user"
-        assert agent.messages[0]["content"] == "Hello"
+        assert agent.messages[0].role == "user"
+        assert agent.messages[0].content == "Hello"
 
 
 @pytest.mark.asyncio
 async def test_process_single_turn_streaming(mock_agent_config, mock_litellm_streaming):
     """Test single turn streaming processing."""
     async with Agent(mock_agent_config) as agent:
-        messages = [{"role": "user", "content": "Hello"}]
+        messages = [Message(role="user", content="Hello")]
 
         results = []
         async for chunk in agent.process_single_turn_with_tools(messages):
@@ -160,7 +161,7 @@ async def test_problem_solved_detection(mock_agent_config):
 @pytest.mark.asyncio
 async def test_error_handling(mock_agent_config):
     """Test error handling."""
-    with patch("litellm.acompletion", side_effect=Exception("API Error")):
+    with patch("litellm.completion", side_effect=Exception("API Error")):
         async with Agent(mock_agent_config) as agent:
             with pytest.raises(AgentError):
                 async for chunk in agent.process_single_turn_with_tools([]):
