@@ -50,20 +50,19 @@ graph TD
 
 ### 設定管理
 
-既存の設定モジュールを活用してLLMプロバイダー情報を管理：
+既存の設定モジュールを活用してLiteLLM設定を管理：
 
 ```python
-# src/ygents/config/models.py（既存）
-class LLMConfig(BaseModel):
-    provider: Literal["openai", "claude"]
-    openai: Optional[OpenAIConfig] = None
-    claude: Optional[ClaudeConfig] = None
+# src/ygents/config/models.py（現在の実装）
+class YgentsConfig(BaseModel):
+    mcp_servers: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    litellm: Dict[str, Any] = Field(default_factory=dict)
 ```
 
 ### エージェントでの直接利用
 
 ```python
-# src/ygents/agent/core.py（実装予定）
+# src/ygents/agent/core.py（現在の実装）
 import litellm
 from ..config.models import YgentsConfig
 
@@ -71,24 +70,22 @@ class Agent:
     def __init__(self, config: YgentsConfig):
         self.config = config
     
-    async def generate_response(self, messages: List[Dict]) -> str:
+    async def process_single_turn_with_tools(self, messages: List[Message]) -> AsyncGenerator[AgentYieldItem, None]:
         """LiteLLMを直接利用してレスポンス生成"""
-        llm_config = self.config.llm
+        # MessageオブジェクトをAPI用のdict形式に変換
+        messages_dict = [msg.to_dict() for msg in messages]
         
-        if llm_config.provider == "openai":
-            model = f"openai/{llm_config.openai.model}"
-            api_key = llm_config.openai.api_key
-        elif llm_config.provider == "claude":
-            model = f"claude/{llm_config.claude.model}"
-            api_key = llm_config.claude.api_key
+        tools_schema = self._get_tools_schema() if self._mcp_client_connected else None
         
-        response = await litellm.acompletion(
-            model=model,
-            messages=messages,
-            api_key=api_key
+        # LiteLLM設定を直接パススルー
+        response = litellm.completion(
+            messages=messages_dict,
+            tools=tools_schema,
+            stream=True,
+            **self.config.litellm,  # 設定をそのままパススルー
         )
         
-        return response.choices[0].message.content
+        # ストリーミングレスポンスの処理...
 ```
 
 ### エラーハンドリング
@@ -170,38 +167,33 @@ llm:
 ### 基本的な利用パターン
 
 ```python
-# エージェント内でのLiteLLM直接利用
+# エージェント内でのLiteLLM直接利用（現在の実装）
 class Agent:
-    async def process_request(self, user_input: str) -> str:
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": user_input}
-        ]
-        
-        # LiteLLMを直接呼び出し
-        response = await litellm.acompletion(
-            model=self._get_model_string(),
-            messages=messages,
-            api_key=self._get_api_key()
-        )
-        
-        return response.choices[0].message.content
-    
-    def _get_model_string(self) -> str:
-        """設定からモデル文字列を生成"""
-        llm_config = self.config.llm
-        if llm_config.provider == "openai":
-            return f"openai/{llm_config.openai.model}"
-        elif llm_config.provider == "claude":
-            return f"claude/{llm_config.claude.model}"
-    
-    def _get_api_key(self) -> str:
-        """設定からAPI keyを取得"""
-        llm_config = self.config.llm
-        if llm_config.provider == "openai":
-            return llm_config.openai.api_key
-        elif llm_config.provider == "claude":
-            return llm_config.claude.api_key
+    async def process_single_turn_with_tools(self, messages: List[Message]) -> AsyncGenerator[AgentYieldItem, None]:
+        """単一ターンでのLLM completion + ツール実行"""
+        try:
+            import litellm
+            
+            # MessageオブジェクトをAPI用のdict形式に変換
+            messages_dict = [msg.to_dict() for msg in messages]
+            
+            tools_schema = self._get_tools_schema() if self._mcp_client_connected else None
+            
+            # 設定を直接パススルー - プロバイダー固有の処理不要
+            response = litellm.completion(
+                messages=messages_dict,
+                tools=tools_schema,
+                stream=True,
+                **self.config.litellm,  # 全設定を直接渡す
+            )
+            
+            # ストリーミングレスポンスとツール実行の処理
+            assistant_message = Message(role="assistant", content="", tool_calls=[])
+            # ... (詳細な実装は省略)
+            
+        except Exception as e:
+            yield ErrorMessage(content=f"エラーが発生しました: {e}")
+            raise AgentError(f"Completion failed: {e}") from e
 ```
 
 ### MCP連携での利用
@@ -275,14 +267,16 @@ async def test_llm_error_handling():
 LiteLLMの高度な機能を活用する設定オプション：
 
 ```yaml
-llm:
-  provider: "openai"
-  openai:
-    api_key: "${OPENAI_API_KEY}"
-    model: "gpt-4"
-    temperature: 0.7
-    max_tokens: 2000
-    timeout: 30
+litellm:
+  model: "openai/gpt-4"
+  api_key: "${OPENAI_API_KEY}"
+  temperature: 0.7
+  max_tokens: 2000
+  timeout: 30
+  # LiteLLMの任意のパラメータが利用可能
+  stream: true
+  functions: []
+  logit_bias: {}
 ```
 
 ### 2. 高度なLiteLLM機能
@@ -321,11 +315,16 @@ def log_failure(kwargs, response_obj, start_time, end_time):
 
 ## まとめ
 
-LiteLLMを直接利用することで：
+LiteLLMを直接利用する設計が完全に実装されました：
 
-1. **実装コストの大幅削減**: 独自モジュール不要
+1. **実装完了**: YgentsConfig.litellmによる柔軟な設定管理
 2. **機能豊富性**: LiteLLMの全機能を直接享受
-3. **保守性の向上**: アップデートの自動追従
-4. **設定の統一**: 既存設定システムとの統合
+3. **保守性向上**: プロバイダー固有コードの削除による簡素化
+4. **拡張性確保**: 100+プロバイダーへの自動対応
 
-この方針により、より多くのリソースをエージェントの中核ロジックとユーザーエクスペリエンスの向上に集中できます。
+**実装成果:**
+- コード行数: 358行削除、155行追加（大幅な簡素化）
+- テスト削減: 20→12テストケース
+- 設定柔軟性: 任意のLiteLLMパラメータ対応
+
+この設計により、エージェントの中核ロジックとユーザーエクスペリエンスの向上により多くのリソースを集中できるようになりました。
