@@ -34,10 +34,7 @@ graph TD
 ```python
 YgentsConfig
 ├── mcp_servers: Dict[str, Dict[str, Any]]  # FastMCP形式の生辞書
-└── llm: LLMConfig
-    ├── provider: Literal["openai", "claude"]
-    ├── openai: Optional[OpenAIConfig]
-    └── claude: Optional[ClaudeConfig]
+└── litellm: Dict[str, Any]                 # LiteLLM設定（柔軟な辞書形式）
 ```
 
 ### MCPサーバー設定（生辞書形式）
@@ -74,37 +71,51 @@ mcpServers:
 - 意味的バリデーション（url/command必須など）はFastMCPに委譲
 - エラーはFastMCP接続時に表面化、詳細なエラーメッセージを提供
 
-### LLM設定
+### LiteLLM設定（生辞書形式）
 
-#### LLMConfig
-
-LLMプロバイダーの統合設定を管理します。
+LiteLLMライブラリが期待する形式の生辞書で設定を管理します。これにより、LiteLLMの豊富な機能と100+のプロバイダーサポートを直接享受できます。
 
 ```python
-class LLMConfig(BaseModel):
-    provider: Literal["openai", "claude"]
-    openai: Optional[OpenAIConfig] = None
-    claude: Optional[ClaudeConfig] = None
+# LiteLLM設定の型定義（型ヒント用）
+LiteLLMConfig = Dict[str, Any]
 ```
 
-**バリデーションルール:**
-- 指定されたプロバイダーに対応する設定が必須
+**LiteLLM対応形式:**
+- **OpenAI**: `{"model": "openai/gpt-4", "api_key": "...", "temperature": 0.7}`
+- **Claude**: `{"model": "anthropic/claude-3-sonnet-20240229", "api_key": "...", "max_tokens": 1000}`
+- **その他**: LiteLLMが対応する任意のプロバイダーと設定
 
-#### OpenAIConfig
-
+**使用例:**
 ```python
-class OpenAIConfig(BaseModel):
-    api_key: str
-    model: str = "gpt-3.5-turbo"  # デフォルト値
+# OpenAI設定
+litellm = {
+    "model": "openai/gpt-4",
+    "api_key": "sk-...",
+    "temperature": 0.7,
+    "max_tokens": 2000,
+    "timeout": 30
+}
+
+# Claude設定
+litellm = {
+    "model": "anthropic/claude-3-sonnet-20240229", 
+    "api_key": "sk-ant-...",
+    "temperature": 0.7,
+    "max_tokens": 4000
+}
+
+# その他プロバイダー
+litellm = {
+    "model": "ollama/llama2",
+    "api_base": "http://localhost:11434",
+    "temperature": 0.5
+}
 ```
 
-#### ClaudeConfig
-
-```python
-class ClaudeConfig(BaseModel):
-    api_key: str
-    model: str = "claude-3-sonnet-20240229"  # デフォルト値
-```
+**バリデーション方針:**
+- 設定の構文チェックのみYAML読み込み時に実施
+- 意味的バリデーション（model/api_key必須など）はLiteLLMに委譲
+- エラーはLiteLLM呼び出し時に表面化、詳細なエラーメッセージを提供
 
 ## 設定ローダー
 
@@ -130,8 +141,9 @@ class ConfigLoader:
    - `mcpServers` → `mcp_servers`
 
 3. **環境変数適用** (`_apply_env_overrides`)
-   - `OPENAI_API_KEY` → `llm.openai.api_key`
-   - `ANTHROPIC_API_KEY` → `llm.claude.api_key`
+   - model名が`openai`で始まる場合: `OPENAI_API_KEY` → `litellm.api_key`
+   - model名が`anthropic`で始まる場合: `ANTHROPIC_API_KEY` → `litellm.api_key`
+   - model指定なしの場合: 環境変数の優先順で適用
 
 4. **Pydantic検証**
    - 型チェック
@@ -164,30 +176,60 @@ mcpServers:
     command: "python"
     args: ["./assistant_server.py"]
 
-# LLM プロバイダー設定
-llm:
-  provider: "openai"  # または "claude"
-  openai:
-    api_key: "your-openai-api-key"
-    model: "gpt-3.5-turbo"  # オプショナル
-  claude:
-    api_key: "your-claude-api-key"
-    model: "claude-3-sonnet-20240229"  # オプショナル
+# LiteLLM 設定 - 任意のプロバイダーに対応
+litellm:
+  model: "openai/gpt-3.5-turbo"  # または "anthropic/claude-3-sonnet-20240229"
+  api_key: "your-api-key"
+  temperature: 0.7
+  max_tokens: 1000
+```
+
+### プロバイダー別設定例
+
+**OpenAI設定:**
+```yaml
+litellm:
+  model: "openai/gpt-4"
+  api_key: "${OPENAI_API_KEY}"
+  temperature: 0.7
+  max_tokens: 2000
+  timeout: 30
+```
+
+**Claude設定:**
+```yaml
+litellm:
+  model: "anthropic/claude-3-sonnet-20240229"
+  api_key: "${ANTHROPIC_API_KEY}"
+  temperature: 0.7
+  max_tokens: 4000
+```
+
+**ローカルLLM設定:**
+```yaml
+litellm:
+  model: "ollama/llama2"
+  api_base: "http://localhost:11434"
+  temperature: 0.5
 ```
 
 ### 環境変数による上書き
 
-環境変数が設定されている場合、YAML設定を上書きします：
+環境変数が設定されている場合、YAML設定のapi_keyを上書きします：
 
 ```bash
 export OPENAI_API_KEY="env-override-key"
 export ANTHROPIC_API_KEY="env-override-key"
 ```
 
+**上書きルール:**
+- model名が`openai`で始まる場合: `OPENAI_API_KEY`を使用
+- model名が`anthropic`で始まる場合: `ANTHROPIC_API_KEY`を使用
+- model指定なしの場合: `OPENAI_API_KEY` → `ANTHROPIC_API_KEY`の順で試行
+
 ### デフォルト値
 
-- OpenAI model: `"gpt-3.5-turbo"`
-- Claude model: `"claude-3-sonnet-20240229"`
+litellm設定は完全に任意で、デフォルト値は持ちません。LiteLLMライブラリがプロバイダーごとのデフォルト値を提供します。
 
 ## テスト設計
 
@@ -202,24 +244,22 @@ tests/test_config/
 
 ### テスト範囲
 
-**合計20テストケース、95%カバレッジ**
+**合計12テストケース、88%カバレッジ**
 
 #### モデルテスト (test_models.py)
-- OpenAIConfig/ClaudeConfig: 必須フィールド、デフォルト値
-- LLMConfig: プロバイダー検証、設定整合性
-- YgentsConfig: 全体設定の統合（MCP設定は生辞書として扱う）
+- YgentsConfig: 基本設定、litellm設定、MCP設定統合
 
 #### ローダーテスト (test_loader.py)
 - YAML読み込み: 基本形式、各プロバイダー
-- 環境変数上書き: API key上書き動作
+- 環境変数上書き: model名ベースのAPI key選択
 - エラーハンドリング: ファイル不存在、YAML構文エラー
-- デフォルト値適用
 - 辞書形式読み込み
 
-**簡素化された点:**
-- MCPServerConfigのバリデーションテストを削除（FastMCPに委譲）
-- 設定検証エラーテストを削除（FastMCP接続時にチェック）
-- テストケース数を26→20に削減
+**大幅簡素化された点:**
+- LLMConfig、OpenAIConfig、ClaudeConfigクラスを削除
+- プロバイダー固有バリデーションを削除（LiteLLMに委譲）
+- litellm設定は任意のDict[str, Any]として扱う
+- テストケース数を20→12に削減
 
 ### テストFixture
 
@@ -241,19 +281,19 @@ def env_with_keys():
 
 - **Pydantic v2**: 実行時型チェックとデータ検証
 - **mypy**: 静的型チェック（types-PyYAML対応）
-- **Literal型**: プロバイダー選択の型安全性
+- **柔軟な型定義**: Dict[str, Any]による拡張性と型安全性の両立
 
 ### 堅牢性
 
-- **包括的バリデーション**: 設定の整合性を保証
-- **詳細なエラーメッセージ**: デバッグを容易にする
-- **フォールバック**: デフォルト値による安全な動作
+- **委譲バリデーション**: LiteLLMライブラリによる設定検証
+- **詳細なエラーメッセージ**: LiteLLMからの詳細なエラー情報
+- **フォールバック**: 環境変数による設定上書き
 
 ### 拡張性
 
-- **プロバイダー追加**: 新しいLLMプロバイダーの容易な追加
-- **設定項目追加**: Pydanticモデルの拡張による新機能対応
-- **カスタムバリデーション**: `@model_validator`による柔軟な検証
+- **プロバイダー非依存**: LiteLLMサポートの全プロバイダーに対応
+- **設定項目拡張**: 任意のLiteLLMパラメータを設定可能
+- **将来対応**: LiteLLMの新機能を自動的に利用可能
 
 ### テスト品質
 
@@ -263,17 +303,20 @@ def env_with_keys():
 
 ## 今後の拡張予定
 
-1. **追加プロバイダー**
-   - Google Gemini
-   - Ollama (ローカルLLM)
+1. **LiteLLM高度機能活用**
+   - ストリーミングレスポンス設定
+   - レスポンスキャッシュ設定
+   - 複数プロバイダー負荷分散
 
 2. **設定機能拡張**
    - 設定プロファイル管理
    - 動的設定リロード
+   - 設定テンプレート機能
 
 3. **セキュリティ強化**
    - API key暗号化
    - 設定ファイル権限チェック
+   - セキュアな環境変数管理
 
 ## 関連ファイル
 
