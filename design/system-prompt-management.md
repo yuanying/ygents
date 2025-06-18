@@ -181,25 +181,63 @@ system_prompt:
 #     expertise_level: "エキスパート"
 ```
 
-## 実装フェーズ
+## 実装計画
 
-### Phase 1: 基本機能
-- [ ] プロンプトテンプレートシステムの実装
-- [ ] YgentsConfigへのsystem_prompt設定追加
-- [ ] Agentクラスでのシステムプロンプト注入機能
-- [ ] 基本的なテンプレート（default, react）の実装
+### Phase 1: 基本機能（Issues #25-#31）
 
-### Phase 2: 拡張機能
-- [ ] テンプレート変数システムの実装
-- [ ] 設定ファイルでの変数指定機能
-- [ ] カスタムプロンプト機能
-- [ ] プロンプトテンプレートの動的読み込み
+#### 1. プロンプトテンプレートの基本構造を実装 [#25](https://github.com/yuanying/ygents/issues/25)
+- `src/ygents/prompts/__init__.py`
+- `src/ygents/prompts/templates.py`
+- `PromptTemplate`プロトコルと`PromptType`列挙型の定義
 
-### Phase 3: 高度な機能
-- [ ] 外部ファイルからのプロンプトテンプレート読み込み
-- [ ] プロンプトテンプレートの検証機能
-- [ ] 複数のプロンプトテンプレートの組み合わせ
-- [ ] プロンプトテンプレートのバージョン管理
+#### 2. デフォルトプロンプトテンプレートを実装 [#26](https://github.com/yuanying/ygents/issues/26)
+- `DefaultPrompt`クラスの実装
+- `PROMPT_TEMPLATES`レジストリの基本構造
+
+#### 3. ReActプロンプトテンプレートを実装 [#27](https://github.com/yuanying/ygents/issues/27)
+- `ReActPrompt`クラスの実装
+- `PROMPT_TEMPLATES`への追加
+
+#### 4. SystemPromptConfig設定モデルを実装 [#28](https://github.com/yuanying/ygents/issues/28)
+- `src/ygents/config/models.py`の`SystemPromptConfig`クラス追加
+- Pydanticバリデーションの実装
+
+#### 5. YgentsConfigにsystem_promptフィールドを追加 [#29](https://github.com/yuanying/ygents/issues/29)
+- `YgentsConfig`クラスの`system_prompt`フィールド追加
+- 既存設定との互換性確保
+
+#### 6. Agentクラスにシステムプロンプト注入機能を実装 [#30](https://github.com/yuanying/ygents/issues/30)
+- `Agent.__init__`での`_setup_system_prompt`メソッド呼び出し
+- `_setup_system_prompt`メソッドの実装
+
+#### 7. システムプロンプト取得と適用ロジックを実装 [#31](https://github.com/yuanying/ygents/issues/31)
+- `_get_system_prompt`メソッドの実装
+- プロンプトタイプからテンプレート取得機能
+
+### Phase 2: 拡張機能（Issues #32-#34）
+
+#### 8. テンプレート変数システムを実装 [#32](https://github.com/yuanying/ygents/issues/32)
+- `_apply_template_variables`メソッドの実装
+- 変数置換機能の実装
+
+#### 9. カスタムプロンプト機能を実装 [#33](https://github.com/yuanying/ygents/issues/33)
+- `custom_prompt`設定の処理ロジック
+- プロンプトタイプより優先されるロジック
+
+#### 10. システムプロンプト機能のテストを実装 [#34](https://github.com/yuanying/ygents/issues/34)
+- `tests/test_prompts/test_templates.py`
+- `tests/test_config/test_models.py`の拡張
+- `tests/test_agent/test_core.py`の拡張
+
+### Phase 3: 完成・文書化（Issues #35-#36）
+
+#### 11. 利用例とサンプル設定を追加 [#35](https://github.com/yuanying/ygents/issues/35)
+- `examples/`にプロンプト使用例を追加
+- 設定ファイル例の更新
+
+#### 12. システムプロンプト機能のドキュメントを更新 [#36](https://github.com/yuanying/ygents/issues/36)
+- `README.md`の機能説明更新
+- `CLAUDE.md`の設定例更新
 
 ## テスト戦略
 
