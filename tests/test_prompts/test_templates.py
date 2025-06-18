@@ -1,12 +1,11 @@
 """Tests for prompt templates module."""
 
-import pytest
 from typing import Protocol
 
 from ygents.prompts.templates import (
+    PROMPT_TEMPLATES,
     PromptTemplate,
     PromptType,
-    PROMPT_TEMPLATES,
 )
 
 
@@ -24,6 +23,7 @@ class TestPromptTemplate:
 
     def test_prompt_template_has_required_attributes(self) -> None:
         """PromptTemplateが必要な属性を持っていることを確認."""
+
         # Protocol自体はインスタンス化できないので、
         # 型チェックのためのテストクラスを作成
         class TestTemplate:

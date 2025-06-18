@@ -6,7 +6,7 @@ from typing import Dict, Protocol
 
 class PromptTemplate(Protocol):
     """プロンプトテンプレートのインターフェース."""
-    
+
     name: str
     description: str
     system_prompt: str
@@ -14,7 +14,7 @@ class PromptTemplate(Protocol):
 
 class PromptType(Enum):
     """利用可能なプロンプトタイプ."""
-    
+
     DEFAULT = "default"
 
 
