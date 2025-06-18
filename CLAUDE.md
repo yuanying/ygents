@@ -10,10 +10,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **開発言語**: Python
 - **開発方針**:
-  - 新しい機能開発やバグ修正を行う際にはまず新しくブランチを作成する。
   - 設計ドキュメントを `design/` ディレクトリに配置。
+- **開発手順**
+  - 新しい機能開発やバグ修正を行う際にはまず新しくブランチを作成する。
   - テスト駆動開発（TDD）を実践。
-  - 新しい作業を開始する前にブランチを作成し、適切な粒度でコミットを行ってください。
+  - 適切な粒度でコミットを必ず行ってください。
+  - Issueを実装した場合はコミットをpushし、そのIssueをCloseするPRを必ず作成する。
 
 ## Development Commands
 

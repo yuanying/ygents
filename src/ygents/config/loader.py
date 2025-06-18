@@ -7,6 +7,7 @@ from typing import Any, Dict
 import yaml
 from pydantic import ValidationError
 
+from ..prompts.templates import PROMPT_TEMPLATES
 from .models import YgentsConfig
 
 
@@ -58,6 +59,10 @@ class ConfigLoader:
 
         # Apply environment variable overrides
         normalized_dict = self._apply_env_overrides(normalized_dict)
+
+        # Validate and resolve system prompt configuration
+        self._validate_system_prompt_config(normalized_dict)
+        normalized_dict = self._resolve_system_prompt(normalized_dict)
 
         try:
             return YgentsConfig(**normalized_dict)
@@ -123,3 +128,85 @@ class ConfigLoader:
                 config["litellm"]["api_key"] = claude_key
 
         return config
+
+    def _validate_system_prompt_config(self, config_dict: Dict[str, Any]) -> None:
+        """Validate system prompt configuration.
+
+        Args:
+            config_dict: Configuration dictionary
+
+        Raises:
+            ValueError: If system prompt configuration is invalid
+        """
+        if "system_prompt" not in config_dict:
+            return
+
+        system_prompt = config_dict["system_prompt"]
+        if not isinstance(system_prompt, dict):
+            return
+
+        # Validate prompt type
+        prompt_type = system_prompt.get("type", "default")
+        if prompt_type not in PROMPT_TEMPLATES:
+            available_types = list(PROMPT_TEMPLATES.keys())
+            raise ValueError(
+                f"Invalid prompt type '{prompt_type}'. "
+                f"Available types: {available_types}"
+            )
+
+    def _resolve_system_prompt(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Resolve system prompt template and variables.
+
+        Args:
+            config_dict: Configuration dictionary
+
+        Returns:
+            Configuration dictionary with resolved system prompt
+        """
+        if "system_prompt" not in config_dict:
+            return config_dict
+
+        system_prompt = config_dict["system_prompt"]
+        if not isinstance(system_prompt, dict):
+            return config_dict
+
+        # Create a copy to avoid modifying the original
+        config = dict(config_dict)
+        resolved_prompt = dict(system_prompt)
+
+        # If custom_prompt is specified, use it with variable substitution
+        if "custom_prompt" in resolved_prompt and resolved_prompt["custom_prompt"]:
+            prompt_text = resolved_prompt["custom_prompt"]
+            variables = resolved_prompt.get("variables", {})
+            resolved_prompt["resolved_prompt"] = self._apply_template_variables(
+                prompt_text, variables
+            )
+        else:
+            # Use template-based prompt
+            prompt_type = resolved_prompt.get("type", "default")
+            if prompt_type in PROMPT_TEMPLATES:
+                template = PROMPT_TEMPLATES[prompt_type]
+                variables = resolved_prompt.get("variables", {})
+                resolved_prompt["resolved_prompt"] = self._apply_template_variables(
+                    template.system_prompt, variables
+                )
+
+        config["system_prompt"] = resolved_prompt
+        return config
+
+    def _apply_template_variables(
+        self, template: str, variables: Dict[str, str]
+    ) -> str:
+        """Apply template variables to a prompt template.
+
+        Args:
+            template: Template string with {variable} placeholders
+            variables: Dictionary of variable name to value mappings
+
+        Returns:
+            Template with variables substituted
+        """
+        result = template
+        for key, value in variables.items():
+            result = result.replace(f"{{{key}}}", value)
+        return result
