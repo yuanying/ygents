@@ -11,6 +11,7 @@ class TestYgentsConfig:
         config = YgentsConfig()
         assert config.mcp_servers == {}
         assert config.litellm == {}
+        assert config.system_prompt is None
 
     def test_ygents_config_with_litellm(self):
         """Test Ygents config with litellm configuration."""
@@ -38,6 +39,55 @@ class TestYgentsConfig:
         assert config.mcp_servers["weather"]["url"] == "https://weather.example.com"
         assert config.mcp_servers["assistant"]["command"] == "python"
         assert config.litellm["model"] == "claude-3-sonnet-20240229"
+
+    def test_ygents_config_with_system_prompt(self):
+        """Test YgentsConfig with system prompt configuration."""
+        system_prompt_config = SystemPromptConfig(type="react")
+        config = YgentsConfig(
+            litellm={"model": "openai/gpt-4o", "api_key": "test-key"},
+            system_prompt=system_prompt_config,
+        )
+        assert config.system_prompt is not None
+        assert config.system_prompt.type == "react"
+        assert config.system_prompt.custom_prompt is None
+        assert config.system_prompt.variables == {}
+
+    def test_ygents_config_with_system_prompt_dict(self):
+        """Test YgentsConfig with system prompt as dict."""
+        config = YgentsConfig(
+            system_prompt={
+                "type": "custom",
+                "custom_prompt": "あなたは{role}です。",
+                "variables": {"role": "エンジニア"},
+            }
+        )
+        assert config.system_prompt is not None
+        assert config.system_prompt.type == "custom"
+        assert config.system_prompt.custom_prompt == "あなたは{role}です。"
+        assert config.system_prompt.variables == {"role": "エンジニア"}
+
+    def test_ygents_config_full_configuration(self):
+        """Test YgentsConfig with all fields including system_prompt."""
+        config = YgentsConfig(
+            mcp_servers={"weather": {"url": "https://weather.example.com"}},
+            litellm={"model": "openai/gpt-4o", "api_key": "test-key"},
+            system_prompt={"type": "react", "variables": {"domain": "データ分析"}},
+        )
+        assert len(config.mcp_servers) == 1
+        assert config.litellm["model"] == "openai/gpt-4o"
+        assert config.system_prompt is not None
+        assert config.system_prompt.type == "react"
+        assert config.system_prompt.variables == {"domain": "データ分析"}
+
+    def test_ygents_config_backward_compatibility(self):
+        """Test that existing configurations without system_prompt still work."""
+        config = YgentsConfig(
+            mcp_servers={"test": {"url": "https://test.example.com"}},
+            litellm={"model": "openai/gpt-3.5-turbo"},
+        )
+        assert config.mcp_servers["test"]["url"] == "https://test.example.com"
+        assert config.litellm["model"] == "openai/gpt-3.5-turbo"
+        assert config.system_prompt is None  # デフォルトはNone
 
 
 class TestSystemPromptConfig:

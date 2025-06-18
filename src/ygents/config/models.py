@@ -30,3 +30,8 @@ class YgentsConfig(BaseModel):
 
     mcp_servers: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     litellm: Dict[str, Any] = Field(default_factory=dict)
+
+    # システムプロンプト設定
+    system_prompt: Optional[SystemPromptConfig] = Field(
+        default=None, description="システムプロンプトの設定"
+    )
