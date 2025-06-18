@@ -9,8 +9,9 @@ Agentクラスに対してシステムプロンプトを指定できる機能を
 1. **システムプロンプトの注入**: Agent起動時にシステムプロンプトを指定可能
 2. **プロンプトテンプレート管理**: 事前定義されたプロンプトテンプレートの管理
 3. **設定による選択**: 設定ファイルでプロンプトタイプを選択
-4. **拡張性**: 新しいエージェントタイプの追加が容易
-5. **後方互換性**: 既存のAgentクラスとの互換性維持
+4. **早期検証**: 設定ファイル読み込み時にプロンプトタイプの妥当性を検証
+5. **拡張性**: 新しいエージェントタイプの追加が容易
+6. **後方互換性**: 既存のAgentクラスとの互換性維持
 
 ## アーキテクチャ
 
@@ -92,7 +93,47 @@ class SystemPromptConfig(BaseModel):
     variables: Dict[str, str] = Field(default_factory=dict, description="プロンプトテンプレート内で使用される変数")
 ```
 
-### 3. Agentクラスの拡張
+### 3. 設定読み込み時の検証
+
+```python
+# src/ygents/config/loader.py
+from ..prompts.templates import PROMPT_TEMPLATES
+
+class ConfigLoader:
+    def _validate_system_prompt_config(self, config_dict: Dict[str, Any]) -> None:
+        """システムプロンプト設定の検証"""
+        if "system_prompt" not in config_dict:
+            return
+            
+        system_prompt = config_dict["system_prompt"]
+        if not isinstance(system_prompt, dict):
+            return
+            
+        # プロンプトタイプの検証
+        prompt_type = system_prompt.get("type", "default")
+        if prompt_type not in PROMPT_TEMPLATES:
+            available_types = list(PROMPT_TEMPLATES.keys())
+            raise ValueError(
+                f"Invalid prompt type '{prompt_type}'. "
+                f"Available types: {available_types}"
+            )
+    
+    def load_config(self, config_path: str) -> YgentsConfig:
+        """設定ファイルを読み込み、検証を行う"""
+        # YAML読み込み
+        config_dict = self._load_yaml(config_path)
+        
+        # 環境変数適用
+        config_dict = self._apply_env_overrides(config_dict)
+        
+        # システムプロンプト設定の検証
+        self._validate_system_prompt_config(config_dict)
+        
+        # Pydanticモデルに変換
+        return YgentsConfig(**config_dict)
+```
+
+### 4. Agentクラスの拡張
 
 ```python
 # src/ygents/agent/core.py
@@ -150,7 +191,7 @@ class Agent:
         return result
 ```
 
-### 4. 設定ファイル例
+### 5. 設定ファイル例
 
 ```yaml
 # config.yaml
@@ -206,6 +247,11 @@ system_prompt:
 - `YgentsConfig`クラスの`system_prompt`フィールド追加
 - 既存設定との互換性確保
 
+#### 5.5. ConfigLoaderでの設定検証機能を実装 [新規Issue]
+- `ConfigLoader`での`_validate_system_prompt_config`メソッド実装
+- 設定ファイル読み込み時のプロンプトタイプ検証
+- 存在しないプロンプトタイプの早期エラー検出
+
 #### 6. Agentクラスにシステムプロンプト注入機能を実装 [#30](https://github.com/yuanying/ygents/issues/30)
 - `Agent.__init__`での`_setup_system_prompt`メソッド呼び出し
 - `_setup_system_prompt`メソッドの実装
@@ -246,6 +292,7 @@ system_prompt:
 - システムプロンプトの正しい注入
 - テンプレート変数の正しい置換
 - 設定ファイルの正しい解析
+- 設定読み込み時のプロンプトタイプ検証
 
 ### 2. 統合テスト
 - Agentクラスでのシステムプロンプト動作
