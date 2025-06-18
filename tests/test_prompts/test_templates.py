@@ -3,8 +3,8 @@
 from typing import Protocol
 
 from ygents.prompts.templates import (
-    DefaultPrompt,
     PROMPT_TEMPLATES,
+    DefaultPrompt,
     PromptTemplate,
     PromptType,
 )
