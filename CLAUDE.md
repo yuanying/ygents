@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - 新しい機能開発やバグ修正を行う際にはまず新しくブランチを作成する。
   - 設計ドキュメントを `design/` ディレクトリに配置。
   - テスト駆動開発（TDD）を実践。
+  - 新しい作業を開始する前にブランチを作成し、適切な粒度でコミットを行ってください。
 
 ## Development Commands
 
@@ -71,14 +72,10 @@ mcpServers:
     command: "python"
     args: ["./assistant_server.py"]
 
-llm:
-  provider: "openai"  # openai または claude
-  openai:
-    api_key: "your-openai-api-key-here"
-    model: "gpt-3.5-turbo"
-  claude:
-    api_key: "your-claude-api-key-here"
-    model: "claude-3-sonnet-20240229"
+litellm:
+  model: "openai/gpt-4o"  # プロバイダー/モデル形式
+  api_key: "your-api-key-here"
+  temperature: 0.7
 ```
 
 ### Environment Variables
@@ -90,3 +87,26 @@ llm:
 - **レイヤードアーキテクチャ**: CLI → Agent → MCP Client の構造を維持
 - **設定駆動**: 環境変数とYAMLファイルによる設定管理
 - **エージェントの独立性**: CLIとは分離されたエージェント実装でライブラリとしても利用可能
+
+## Core Architecture Details
+
+### Agent Layer (`src/ygents/agent/`)
+- **core.py**: メインのAgentクラス。LLMとの対話ループとMCPツール実行を管理
+- **models.py**: Agent内で使用するデータクラス（Message, AgentYieldItem等）
+- **exceptions.py**: Agent固有の例外クラス
+
+### Configuration Layer (`src/ygents/config/`)  
+- **models.py**: Pydanticベースの設定データクラス（YgentsConfig）
+- **loader.py**: YAML設定ファイルの読み込みと環境変数の適用
+
+### Key Patterns
+- **Streaming Response**: Agentは`AsyncGenerator[AgentYieldItem, None]`でリアルタイム応答
+- **Tool Integration**: MCPサーバーとのツール実行は`fastmcp.Client`経由
+- **LiteLLM Integration**: `**self.config.litellm`で設定を直接パススルー
+- **Environment Override**: モデル名プレフィックス（openai/anthropic）で環境変数を選択
+
+### Test Structure
+- 各レイヤーごとに対應するテストディレクトリを配置
+- `conftest.py`でテスト用設定とモックを提供
+- 非同期テストは`pytest-asyncio`を使用
+```
