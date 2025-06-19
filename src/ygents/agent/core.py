@@ -29,6 +29,9 @@ class Agent:
         self._mcp_client_connected = False
         self.messages: List[Message] = []
 
+        # システムプロンプトの設定
+        self._setup_system_prompt()
+
     async def __aenter__(self) -> "Agent":
         """エージェント開始時にMCPクライアントを初期化・接続"""
         if self.config.mcp_servers:
@@ -316,3 +319,15 @@ class Agent:
                 self._cached_tools = tools
             except Exception:
                 self._cached_tools = []
+
+    def _setup_system_prompt(self) -> None:
+        """システムプロンプトをセットアップ"""
+        if not self.config.system_prompt:
+            return
+
+        # ConfigLoaderで解決済みのプロンプトを使用
+        resolved_prompt = self.config.system_prompt.resolved_prompt
+        if resolved_prompt:
+            # システムメッセージをメッセージリストの最初に追加
+            system_message = Message(role="system", content=resolved_prompt)
+            self.messages.insert(0, system_message)
