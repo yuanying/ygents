@@ -24,6 +24,12 @@ class SystemPromptConfig(BaseModel):
         default_factory=dict, description="プロンプトテンプレート内で使用される変数"
     )
 
+    # 解決済みプロンプト（ConfigLoaderで自動設定）
+    resolved_prompt: Optional[str] = Field(
+        default=None,
+        description="テンプレートと変数を解決した最終的なシステムプロンプト",
+    )
+
 
 class YgentsConfig(BaseModel):
     """Main ygents configuration."""

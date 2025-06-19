@@ -91,15 +91,33 @@ class SystemPromptConfig(BaseModel):
     
     # プロンプト変数（テンプレート内で使用）
     variables: Dict[str, str] = Field(default_factory=dict, description="プロンプトテンプレート内で使用される変数")
+    
+    # 解決済みプロンプト（ConfigLoaderで自動設定）
+    resolved_prompt: Optional[str] = Field(default=None, description="テンプレートと変数を解決した最終的なシステムプロンプト")
 ```
 
-### 3. 設定読み込み時の検証
+### 3. 設定読み込み時の検証と解決
 
 ```python
 # src/ygents/config/loader.py
 from ..prompts.templates import PROMPT_TEMPLATES
 
 class ConfigLoader:
+    def load_from_dict(self, config_dict: Dict[str, Any]) -> YgentsConfig:
+        """設定辞書から設定を読み込み、検証・解決を行う"""
+        # キー正規化
+        normalized_dict = self._normalize_dict_keys(config_dict)
+        
+        # 環境変数適用
+        normalized_dict = self._apply_env_overrides(normalized_dict)
+        
+        # システムプロンプト設定の検証と解決
+        self._validate_system_prompt_config(normalized_dict)
+        normalized_dict = self._resolve_system_prompt(normalized_dict)
+        
+        # Pydanticモデルに変換
+        return YgentsConfig(**normalized_dict)
+    
     def _validate_system_prompt_config(self, config_dict: Dict[str, Any]) -> None:
         """システムプロンプト設定の検証"""
         if "system_prompt" not in config_dict:
@@ -118,27 +136,52 @@ class ConfigLoader:
                 f"Available types: {available_types}"
             )
     
-    def load_config(self, config_path: str) -> YgentsConfig:
-        """設定ファイルを読み込み、検証を行う"""
-        # YAML読み込み
-        config_dict = self._load_yaml(config_path)
+    def _resolve_system_prompt(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """システムプロンプトテンプレートと変数を解決"""
+        if "system_prompt" not in config_dict:
+            return config_dict
+            
+        system_prompt = config_dict["system_prompt"]
+        if not isinstance(system_prompt, dict):
+            return config_dict
+            
+        # コピーを作成して元を変更しない
+        config = dict(config_dict)
+        resolved_prompt = dict(system_prompt)
         
-        # 環境変数適用
-        config_dict = self._apply_env_overrides(config_dict)
+        # カスタムプロンプトが指定されている場合は優先
+        if "custom_prompt" in resolved_prompt and resolved_prompt["custom_prompt"]:
+            prompt_text = resolved_prompt["custom_prompt"]
+            variables = resolved_prompt.get("variables", {})
+            resolved_prompt["resolved_prompt"] = self._apply_template_variables(
+                prompt_text, variables
+            )
+        else:
+            # テンプレートベースのプロンプト
+            prompt_type = resolved_prompt.get("type", "default")
+            if prompt_type in PROMPT_TEMPLATES:
+                template = PROMPT_TEMPLATES[prompt_type]
+                variables = resolved_prompt.get("variables", {})
+                resolved_prompt["resolved_prompt"] = self._apply_template_variables(
+                    template.system_prompt, variables
+                )
         
-        # システムプロンプト設定の検証
-        self._validate_system_prompt_config(config_dict)
-        
-        # Pydanticモデルに変換
-        return YgentsConfig(**config_dict)
+        config["system_prompt"] = resolved_prompt
+        return config
+    
+    def _apply_template_variables(self, template: str, variables: Dict[str, str]) -> str:
+        """テンプレート変数を適用"""
+        result = template
+        for key, value in variables.items():
+            result = result.replace(f"{{{key}}}", value)
+        return result
 ```
 
 ### 4. Agentクラスの拡張
 
 ```python
 # src/ygents/agent/core.py
-from ..prompts.templates import PROMPT_TEMPLATES
-from ..config.models import YgentsConfig, SystemPromptConfig
+from ..config.models import YgentsConfig
 
 class Agent:
     def __init__(self, config: YgentsConfig) -> None:
@@ -155,40 +198,11 @@ class Agent:
         if not self.config.system_prompt:
             return
             
-        system_prompt = self._get_system_prompt()
-        if system_prompt:
+        # ConfigLoaderで解決済みのプロンプトを使用
+        resolved_prompt = self.config.system_prompt.resolved_prompt
+        if resolved_prompt:
             # システムメッセージをメッセージリストの最初に追加
-            self.messages.insert(0, Message(role="system", content=system_prompt))
-    
-    def _get_system_prompt(self) -> Optional[str]:
-        """設定からシステムプロンプトを取得"""
-        if not self.config.system_prompt:
-            return None
-            
-        # カスタムプロンプトが指定されている場合はそれを使用
-        if self.config.system_prompt.custom_prompt:
-            return self._apply_template_variables(
-                self.config.system_prompt.custom_prompt,
-                self.config.system_prompt.variables
-            )
-        
-        # プロンプトタイプから取得
-        prompt_type = self.config.system_prompt.type
-        if prompt_type in PROMPT_TEMPLATES:
-            template = PROMPT_TEMPLATES[prompt_type]
-            return self._apply_template_variables(
-                template.system_prompt,
-                self.config.system_prompt.variables
-            )
-        
-        return None
-    
-    def _apply_template_variables(self, template: str, variables: Dict[str, str]) -> str:
-        """テンプレート変数を適用"""
-        result = template
-        for key, value in variables.items():
-            result = result.replace(f"{{{key}}}", value)
-        return result
+            self.messages.insert(0, Message(role="system", content=resolved_prompt))
 ```
 
 ### 5. 設定ファイル例
@@ -247,27 +261,27 @@ system_prompt:
 - `YgentsConfig`クラスの`system_prompt`フィールド追加
 - 既存設定との互換性確保
 
-#### 5.5. ConfigLoaderでの設定検証機能を実装 [新規Issue]
+#### 5.5. ConfigLoaderでの設定検証・解決機能を実装 [#43](https://github.com/yuanying/ygents/issues/43) ✅ **完了**
 - `ConfigLoader`での`_validate_system_prompt_config`メソッド実装
+- `ConfigLoader`での`_resolve_system_prompt`メソッド実装  
+- `_apply_template_variables`メソッドでの変数置換機能
 - 設定ファイル読み込み時のプロンプトタイプ検証
 - 存在しないプロンプトタイプの早期エラー検出
+- SystemPromptConfigに`resolved_prompt`フィールド追加
 
 #### 6. Agentクラスにシステムプロンプト注入機能を実装 [#30](https://github.com/yuanying/ygents/issues/30)
 - `Agent.__init__`での`_setup_system_prompt`メソッド呼び出し
-- `_setup_system_prompt`メソッドの実装
-
-#### 7. システムプロンプト取得と適用ロジックを実装 [#31](https://github.com/yuanying/ygents/issues/31)
-- `_get_system_prompt`メソッドの実装
-- プロンプトタイプからテンプレート取得機能
+- `_setup_system_prompt`メソッドの実装（ConfigLoaderで解決済みプロンプトを使用）
+- Issue #31, #32の機能をConfigLoaderに統合したため、Agentクラス側は簡素化
 
 ### Phase 2: 拡張機能（Issues #32-#34）
 
-#### 8. テンプレート変数システムを実装 [#32](https://github.com/yuanying/ygents/issues/32)
-- `_apply_template_variables`メソッドの実装
+#### 8. テンプレート変数システムを実装 [#32](https://github.com/yuanying/ygents/issues/32) ✅ **ConfigLoaderに統合済み**
+- `_apply_template_variables`メソッドの実装（ConfigLoader内）
 - 変数置換機能の実装
 
-#### 9. カスタムプロンプト機能を実装 [#33](https://github.com/yuanying/ygents/issues/33)
-- `custom_prompt`設定の処理ロジック
+#### 9. カスタムプロンプト機能を実装 [#33](https://github.com/yuanying/ygents/issues/33) ✅ **ConfigLoaderに統合済み**
+- `custom_prompt`設定の処理ロジック（`_resolve_system_prompt`内）
 - プロンプトタイプより優先されるロジック
 
 #### 10. システムプロンプト機能のテストを実装 [#34](https://github.com/yuanying/ygents/issues/34)
@@ -288,11 +302,13 @@ system_prompt:
 ## テスト戦略
 
 ### 1. 単体テスト
-- プロンプトテンプレートの正常な読み込み
-- システムプロンプトの正しい注入
-- テンプレート変数の正しい置換
-- 設定ファイルの正しい解析
-- 設定読み込み時のプロンプトタイプ検証
+- プロンプトテンプレートの正常な読み込み ✅ **実装済み**
+- システムプロンプト設定の検証と解決 ✅ **実装済み**
+- テンプレート変数の正しい置換 ✅ **実装済み**
+- カスタムプロンプトの変数置換 ✅ **実装済み**
+- 設定ファイルの正しい解析 ✅ **実装済み**
+- 設定読み込み時のプロンプトタイプ検証 ✅ **実装済み**
+- resolved_promptフィールドの動作 ✅ **実装済み**
 
 ### 2. 統合テスト
 - Agentクラスでのシステムプロンプト動作
@@ -338,6 +354,26 @@ config = YgentsConfig(
     }
 )
 ```
+
+## 設計変更履歴
+
+### 2024-12-19: ConfigLoaderでの統合実装 (Issue #43)
+
+**変更概要:**
+- システムプロンプトの解決処理をAgentクラスからConfigLoaderに移動
+- ConfigLoaderで設定ファイル読み込み時に検証と解決を実行
+- SystemPromptConfigに`resolved_prompt`フィールドを追加
+
+**利点:**
+1. **早期検証**: 設定ファイル読み込み時に無効なプロンプトタイプを検出
+2. **パフォーマンス向上**: プロンプト解決を1回だけ実行
+3. **責任の分離**: 設定の処理はConfigLoader、利用はAgentクラス
+4. **テスタビリティ**: ConfigLoader単体でのテストが容易
+
+**影響範囲:**
+- Issue #31, #32の機能がConfigLoaderに統合
+- Agentクラスの実装が大幅に簡素化
+- resolved_promptフィールドによる解決済み状態の明確化
 
 ## 拡張性の考慮
 

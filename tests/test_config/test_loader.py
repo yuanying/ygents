@@ -163,3 +163,157 @@ litellm:
         assert isinstance(config, YgentsConfig)
         assert config.mcp_servers["test"]["command"] == "python"
         assert config.litellm["model"] == "openai/gpt-4"
+
+    def test_system_prompt_validation_valid_type(self, temp_dir, clean_env):
+        """Test system prompt validation with valid prompt type."""
+        config_file = temp_dir / "config.yaml"
+        config_content = """
+system_prompt:
+  type: "default"
+  variables:
+    domain: "テスト"
+"""
+        config_file.write_text(config_content)
+
+        loader = ConfigLoader()
+        config = loader.load_from_file(str(config_file))
+
+        assert config.system_prompt is not None
+        assert config.system_prompt.type == "default"
+        assert config.system_prompt.variables == {"domain": "テスト"}
+        assert config.system_prompt.resolved_prompt is not None
+        # デフォルトプロンプトには変数プレースホルダーがないため、元の内容が展開される
+        assert "問題解決を支援する" in config.system_prompt.resolved_prompt
+
+    def test_system_prompt_validation_invalid_type(self, temp_dir):
+        """Test system prompt validation with invalid prompt type."""
+        config_file = temp_dir / "config.yaml"
+        config_content = """
+system_prompt:
+  type: "invalid_type"
+"""
+        config_file.write_text(config_content)
+
+        loader = ConfigLoader()
+        with pytest.raises(ValueError, match="Invalid prompt type"):
+            loader.load_from_file(str(config_file))
+
+    def test_system_prompt_custom_prompt_resolution(self, temp_dir, clean_env):
+        """Test custom prompt resolution with variables."""
+        config_file = temp_dir / "config.yaml"
+        config_content = """
+system_prompt:
+  custom_prompt: "あなたは{role}として、{task}を実行してください。"
+  variables:
+    role: "エンジニア"
+    task: "コードレビュー"
+"""
+        config_file.write_text(config_content)
+
+        loader = ConfigLoader()
+        config = loader.load_from_file(str(config_file))
+
+        assert config.system_prompt is not None
+        assert (
+            config.system_prompt.custom_prompt
+            == "あなたは{role}として、{task}を実行してください。"
+        )
+        assert config.system_prompt.variables == {
+            "role": "エンジニア",
+            "task": "コードレビュー",
+        }
+        assert (
+            config.system_prompt.resolved_prompt
+            == "あなたはエンジニアとして、コードレビューを実行してください。"
+        )
+
+    def test_system_prompt_template_resolution(self, temp_dir, clean_env):
+        """Test template-based prompt resolution."""
+        config_file = temp_dir / "config.yaml"
+        config_content = """
+system_prompt:
+  type: "default"
+  variables:
+    domain: "データ分析"
+"""
+        config_file.write_text(config_content)
+
+        loader = ConfigLoader()
+        config = loader.load_from_file(str(config_file))
+
+        assert config.system_prompt is not None
+        assert config.system_prompt.type == "default"
+        assert config.system_prompt.resolved_prompt is not None
+        # デフォルトプロンプトには変数プレースホルダーがないため、元の内容が展開される
+        assert "問題解決を支援する" in config.system_prompt.resolved_prompt
+
+    def test_system_prompt_no_variables(self, temp_dir, clean_env):
+        """Test system prompt resolution without variables."""
+        config_file = temp_dir / "config.yaml"
+        config_content = """
+system_prompt:
+  type: "default"
+"""
+        config_file.write_text(config_content)
+
+        loader = ConfigLoader()
+        config = loader.load_from_file(str(config_file))
+
+        assert config.system_prompt is not None
+        assert config.system_prompt.type == "default"
+        assert config.system_prompt.variables == {}
+        assert config.system_prompt.resolved_prompt is not None
+
+    def test_system_prompt_custom_priority_over_type(self, temp_dir, clean_env):
+        """Test that custom_prompt takes priority over type."""
+        config_file = temp_dir / "config.yaml"
+        config_content = """
+system_prompt:
+  type: "default"
+  custom_prompt: "カスタムプロンプト：{instruction}"
+  variables:
+    instruction: "特別な指示"
+"""
+        config_file.write_text(config_content)
+
+        loader = ConfigLoader()
+        config = loader.load_from_file(str(config_file))
+
+        assert config.system_prompt is not None
+        assert config.system_prompt.resolved_prompt == "カスタムプロンプト：特別な指示"
+
+    def test_config_without_system_prompt(self, temp_dir, clean_env):
+        """Test configuration without system prompt."""
+        config_file = temp_dir / "config.yaml"
+        config_content = """
+litellm:
+  model: "openai/gpt-3.5-turbo"
+  api_key: "test-key"
+"""
+        config_file.write_text(config_content)
+
+        loader = ConfigLoader()
+        config = loader.load_from_file(str(config_file))
+
+        assert config.system_prompt is None
+
+    def test_load_from_dict_with_system_prompt(self, clean_env):
+        """Test loading config from dictionary with system prompt."""
+        config_dict = {
+            "system_prompt": {"type": "default", "variables": {"domain": "AI開発"}},
+            "litellm": {
+                "model": "openai/gpt-4",
+                "api_key": "test-key",
+            },
+        }
+
+        loader = ConfigLoader()
+        config = loader.load_from_dict(config_dict)
+
+        assert isinstance(config, YgentsConfig)
+        assert config.system_prompt is not None
+        assert config.system_prompt.type == "default"
+        assert config.system_prompt.variables == {"domain": "AI開発"}
+        assert config.system_prompt.resolved_prompt is not None
+        # デフォルトプロンプトには変数プレースホルダーがないため、元の内容が展開される
+        assert "問題解決を支援する" in config.system_prompt.resolved_prompt

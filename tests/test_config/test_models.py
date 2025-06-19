@@ -99,6 +99,7 @@ class TestSystemPromptConfig:
         assert config.type == "default"
         assert config.custom_prompt is None
         assert config.variables == {}
+        assert config.resolved_prompt is None
 
     def test_system_prompt_config_with_type(self):
         """Test SystemPromptConfig with specific type."""
@@ -106,6 +107,7 @@ class TestSystemPromptConfig:
         assert config.type == "react"
         assert config.custom_prompt is None
         assert config.variables == {}
+        assert config.resolved_prompt is None
 
     def test_system_prompt_config_with_custom_prompt(self):
         """Test SystemPromptConfig with custom prompt."""
@@ -149,3 +151,14 @@ class TestSystemPromptConfig:
         assert isinstance(config.custom_prompt, str)
         assert isinstance(config.variables, dict)
         assert isinstance(config.variables["key"], str)
+
+    def test_system_prompt_config_with_resolved_prompt(self):
+        """Test SystemPromptConfig with resolved prompt."""
+        config = SystemPromptConfig(
+            type="custom",
+            custom_prompt="あなたは{role}です。",
+            resolved_prompt="あなたはエンジニアです。",
+        )
+        assert config.type == "custom"
+        assert config.custom_prompt == "あなたは{role}です。"
+        assert config.resolved_prompt == "あなたはエンジニアです。"
