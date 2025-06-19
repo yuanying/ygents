@@ -389,3 +389,115 @@ async def test_streaming_tool_calls_accumulation(
                 assistant_msg.tool_calls[0]["function"]["arguments"]
                 == '{"city": "Tokyo"}'
             )
+
+
+def test_agent_system_prompt_setup_without_config(mock_agent_config):
+    """Test agent initialization without system prompt configuration."""
+    agent = Agent(mock_agent_config)
+
+    # システムプロンプト設定がない場合、システムメッセージは追加されない
+    assert len(agent.messages) == 0
+
+
+def test_agent_system_prompt_setup_with_resolved_prompt():
+    """Test agent initialization with resolved system prompt."""
+    from ygents.config.models import SystemPromptConfig, YgentsConfig
+
+    # resolved_promptを含むSystemPromptConfigを作成
+    system_prompt_config = SystemPromptConfig(
+        type="default",
+        resolved_prompt="あなたは問題解決を支援するAIエージェントです。",
+    )
+
+    config = YgentsConfig(
+        mcp_servers={},
+        litellm={"model": "openai/gpt-3.5-turbo", "api_key": "test-key"},
+        system_prompt=system_prompt_config,
+    )
+
+    agent = Agent(config)
+
+    # システムメッセージが最初に追加されていることを確認
+    assert len(agent.messages) == 1
+    assert agent.messages[0].role == "system"
+    assert agent.messages[0].content == "あなたは問題解決を支援するAIエージェントです。"
+
+
+def test_agent_system_prompt_setup_without_resolved_prompt():
+    """Test agent initialization with system prompt config but no resolved prompt."""
+    from ygents.config.models import SystemPromptConfig, YgentsConfig
+
+    # resolved_promptがNoneのSystemPromptConfigを作成
+    system_prompt_config = SystemPromptConfig(
+        type="default",
+        resolved_prompt=None,
+    )
+
+    config = YgentsConfig(
+        mcp_servers={},
+        litellm={"model": "openai/gpt-3.5-turbo", "api_key": "test-key"},
+        system_prompt=system_prompt_config,
+    )
+
+    agent = Agent(config)
+
+    # resolved_promptがNoneの場合、システムメッセージは追加されない
+    assert len(agent.messages) == 0
+
+
+def test_agent_system_prompt_setup_with_custom_resolved_prompt():
+    """Test agent initialization with custom resolved system prompt."""
+    from ygents.config.models import SystemPromptConfig, YgentsConfig
+
+    # カスタム解決済みプロンプトを作成
+    custom_prompt = "あなたはエンジニアとして、コードレビューを実行してください。"
+    system_prompt_config = SystemPromptConfig(
+        type="custom",
+        custom_prompt="あなたは{role}として、{task}を実行してください。",
+        variables={"role": "エンジニア", "task": "コードレビュー"},
+        resolved_prompt=custom_prompt,
+    )
+
+    config = YgentsConfig(
+        mcp_servers={},
+        litellm={"model": "openai/gpt-3.5-turbo", "api_key": "test-key"},
+        system_prompt=system_prompt_config,
+    )
+
+    agent = Agent(config)
+
+    # カスタムシステムメッセージが追加されていることを確認
+    assert len(agent.messages) == 1
+    assert agent.messages[0].role == "system"
+    assert agent.messages[0].content == custom_prompt
+
+
+def test_agent_message_order_with_system_prompt():
+    """Test that system prompt is inserted at the beginning of messages."""
+    from ygents.config.models import SystemPromptConfig, YgentsConfig
+
+    system_prompt_config = SystemPromptConfig(
+        type="default",
+        resolved_prompt="システムプロンプトです。",
+    )
+
+    config = YgentsConfig(
+        mcp_servers={},
+        litellm={"model": "openai/gpt-3.5-turbo", "api_key": "test-key"},
+        system_prompt=system_prompt_config,
+    )
+
+    agent = Agent(config)
+
+    # ユーザーメッセージを追加
+    from ygents.agent.models import Message
+
+    user_message = Message(role="user", content="こんにちは")
+    agent.messages.append(user_message)
+
+    # システムメッセージが最初にあることを確認
+    assert len(agent.messages) == 2
+    assert agent.messages[0].role == "system"
+    assert agent.messages[0].content == "システムプロンプトです。"
+    assert agent.messages[1].role == "user"
+    assert agent.messages[1].content == "こんにちは"
