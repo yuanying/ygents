@@ -87,7 +87,7 @@ async def run_agent_query(config: YgentsConfig, query: str) -> None:
             # Initialize streaming response display
             content_parts: List[str] = []
             current_status = "Thinking..."
-            
+
             def create_display() -> Panel:
                 if content_parts:
                     response_text = "".join(content_parts)
@@ -124,7 +124,7 @@ async def run_agent_query(config: YgentsConfig, query: str) -> None:
                         if hasattr(item, "content"):
                             content_parts.append(item.content)
                             live.update(create_display())
-            
+
             # Display final message if no content was received
             if not content_parts:
                 console.print("ℹ️ No response received.", style="dim")
@@ -165,7 +165,7 @@ def run(
                 border_style="blue",
             )
         )
-        
+
         try:
             asyncio.run(interactive_loop(config_obj))
         except KeyboardInterrupt:
@@ -229,7 +229,7 @@ async def interactive_loop(config: YgentsConfig) -> None:
                 # Initialize streaming response display
                 content_parts: List[str] = []
                 current_status = "Thinking..."
-                
+
                 def create_display() -> Panel:
                     if content_parts:
                         response_text = "".join(content_parts)
@@ -247,7 +247,9 @@ async def interactive_loop(config: YgentsConfig) -> None:
                             padding=(1, 2),
                         )
 
-                with Live(create_display(), console=console, refresh_per_second=10) as live:
+                with Live(
+                    create_display(), console=console, refresh_per_second=10
+                ) as live:
                     async for item in agent.run(query):
                         if hasattr(item, "type"):
                             if item.type == "content":
@@ -266,7 +268,7 @@ async def interactive_loop(config: YgentsConfig) -> None:
                             if hasattr(item, "content"):
                                 content_parts.append(item.content)
                                 live.update(create_display())
-                
+
                 # Display final message if no content was received
                 if not content_parts:
                     console.print("ℹ️ No response received.", style="dim")

@@ -84,7 +84,7 @@ system_prompt:
 
     def test_run_command_without_query_starts_interactive(self):
         """Test run command without query starts interactive mode."""
-        # Use Ctrl+C to exit immediately 
+        # Use Ctrl+C to exit immediately
         result = self.runner.invoke(app, ["run"], input="\x03")
         # Should exit with code 0 (successful interactive mode exit)
         assert result.exit_code == 0
