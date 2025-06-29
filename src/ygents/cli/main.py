@@ -2,8 +2,26 @@
 
 import asyncio
 import sys
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Suppress deprecation warnings from dependencies
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
+warnings.filterwarnings("ignore", category=UserWarning, module="litellm")
+# Suppress specific Pydantic warnings
+warnings.filterwarnings("ignore", message=".*PydanticDeprecatedSince20.*")
+warnings.filterwarnings("ignore", message=".*Support for class-based.*")
+warnings.filterwarnings("ignore", message=".*dict.*deprecated.*model_dump.*")
+warnings.filterwarnings("ignore", message=".*The `dict` method is deprecated.*")
+# Suppress all warnings from specific modules
+warnings.filterwarnings("ignore", module="litellm.litellm_core_utils.streaming_handler")
+warnings.filterwarnings("ignore", module="pydantic._internal._config")
+warnings.filterwarnings("ignore", module="pydantic.main")
+# Catch-all for any remaining pydantic warnings
+warnings.filterwarnings("ignore", message=".*Pydantic.*")
 
 import typer
 from rich.console import Console
@@ -153,11 +171,16 @@ async def run_agent_query(config: YgentsConfig, query: str) -> None:
             # Variables for tracking current state
             current_content_parts: List[str] = []
             current_live_content: Optional[Live] = None
+            last_item_type: Optional[str] = None
 
             async for item in agent.run(query):
                 if hasattr(item, "type"):
                     if item.type == "content":
                         # Handle streaming content with Live
+                        # Clear content only if item type changed
+                        if last_item_type != "content":
+                            current_content_parts = []
+
                         current_content_parts.append(item.content)  # type: ignore
                         combined_content = "".join(current_content_parts)
 
@@ -173,6 +196,8 @@ async def run_agent_query(config: YgentsConfig, query: str) -> None:
                             content_panel = create_content_panel(combined_content)
                             current_live_content.update(content_panel)
 
+                        last_item_type = "content"
+
                     elif item.type == "tool_input":
                         # End current Live content if active
                         if current_live_content:
@@ -186,6 +211,8 @@ async def run_agent_query(config: YgentsConfig, query: str) -> None:
                         )
                         console.print(panel)
 
+                        last_item_type = "tool_input"
+
                     elif item.type == "tool_result":
                         # Display tool result panel immediately
                         panel = create_tool_result_panel(
@@ -194,24 +221,36 @@ async def run_agent_query(config: YgentsConfig, query: str) -> None:
                         )
                         console.print(panel)
 
+                        last_item_type = "tool_result"
+
                     elif item.type == "tool_error":
                         # Display tool error panel immediately
                         panel = create_error_panel(item.content, "Tool Error")  # type: ignore
                         console.print(panel)
+
+                        last_item_type = "tool_error"
 
                     elif item.type == "error":
                         # Display general error panel immediately
                         panel = create_error_panel(item.content, "Error")  # type: ignore
                         console.print(panel)
 
+                        last_item_type = "error"
+
                     elif item.type == "status":
                         # Display status panel immediately
                         panel = create_status_panel(item.content)  # type: ignore
                         console.print(panel)
 
+                        last_item_type = "status"
+
                 else:
                     # Fallback for backward compatibility
                     if hasattr(item, "content"):
+                        # Clear content only if item type changed
+                        if last_item_type != "content":
+                            current_content_parts = []
+
                         current_content_parts.append(item.content)
                         combined_content = "".join(current_content_parts)
 
@@ -224,6 +263,8 @@ async def run_agent_query(config: YgentsConfig, query: str) -> None:
                         else:
                             content_panel = create_content_panel(combined_content)
                             current_live_content.update(content_panel)
+
+                        last_item_type = "content"
 
             # Clean up Live display if still active
             if current_live_content:
@@ -329,11 +370,16 @@ async def interactive_loop(config: YgentsConfig) -> None:
                 # Variables for tracking current state
                 current_content_parts: List[str] = []
                 current_live_content: Optional[Live] = None
+                last_item_type: Optional[str] = None
 
                 async for item in agent.run(query):
                     if hasattr(item, "type"):
                         if item.type == "content":
                             # Handle streaming content with Live
+                            # Clear content only if item type changed
+                            if last_item_type != "content":
+                                current_content_parts = []
+
                             current_content_parts.append(item.content)  # type: ignore
                             combined_content = "".join(current_content_parts)
 
@@ -351,6 +397,8 @@ async def interactive_loop(config: YgentsConfig) -> None:
                                 content_panel = create_content_panel(combined_content)
                                 current_live_content.update(content_panel)
 
+                            last_item_type = "content"
+
                         elif item.type == "tool_input":
                             # End current Live content if active
                             if current_live_content:
@@ -364,6 +412,8 @@ async def interactive_loop(config: YgentsConfig) -> None:
                             )
                             console.print(panel)
 
+                            last_item_type = "tool_input"
+
                         elif item.type == "tool_result":
                             # Display tool result panel immediately
                             panel = create_tool_result_panel(
@@ -372,24 +422,36 @@ async def interactive_loop(config: YgentsConfig) -> None:
                             )
                             console.print(panel)
 
+                            last_item_type = "tool_result"
+
                         elif item.type == "tool_error":
                             # Display tool error panel immediately
                             panel = create_error_panel(item.content, "Tool Error")  # type: ignore
                             console.print(panel)
+
+                            last_item_type = "tool_error"
 
                         elif item.type == "error":
                             # Display general error panel immediately
                             panel = create_error_panel(item.content, "Error")  # type: ignore
                             console.print(panel)
 
+                            last_item_type = "error"
+
                         elif item.type == "status":
                             # Display status panel immediately
                             panel = create_status_panel(item.content)  # type: ignore
                             console.print(panel)
 
+                            last_item_type = "status"
+
                     else:
                         # Fallback for backward compatibility
                         if hasattr(item, "content"):
+                            # Clear content only if item type changed
+                            if last_item_type != "content":
+                                current_content_parts = []
+
                             current_content_parts.append(item.content)
                             combined_content = "".join(current_content_parts)
 
@@ -404,6 +466,8 @@ async def interactive_loop(config: YgentsConfig) -> None:
                             else:
                                 content_panel = create_content_panel(combined_content)
                                 current_live_content.update(content_panel)
+
+                            last_item_type = "content"
 
                 # Clean up Live display if still active
                 if current_live_content:
