@@ -30,6 +30,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt
+from rich.status import Status
 
 from ..agent.core import Agent
 from ..agent.exceptions import AgentError
@@ -111,6 +112,179 @@ def create_status_panel(status_content: str) -> Panel:
     )
 
 
+async def process_agent_items(agent: Agent, query: str) -> None:
+    """Process agent.run items with display logic."""
+    # Variables for tracking current state
+    current_content_parts: List[str] = []
+    current_live_content: Optional[Live] = None
+    last_item_type: Optional[str] = None
+    thinking_status: Optional[Status] = None
+
+    # Start with thinking status
+    thinking_status = console.status("🤔 Thinking...", spinner="dots")
+    thinking_status.start()
+
+    try:
+        async for item in agent.run(query):
+            if hasattr(item, "type"):
+                if item.type == "content":
+                    # Stop thinking status if it's running
+                    if thinking_status:
+                        thinking_status.stop()
+                        thinking_status = None
+
+                    # Handle streaming content with Live
+                    # Clear content only if item type changed
+                    if last_item_type != "content":
+                        current_content_parts = []
+
+                    current_content_parts.append(item.content)  # type: ignore
+                    combined_content = "".join(current_content_parts)
+
+                    if current_live_content is None:
+                        # Start new Live display for content
+                        content_panel = create_content_panel(combined_content)
+                        current_live_content = Live(
+                            content_panel, console=console, refresh_per_second=10
+                        )
+                        current_live_content.start()
+                    else:
+                        # Update existing Live display
+                        content_panel = create_content_panel(combined_content)
+                        current_live_content.update(content_panel)
+
+                    last_item_type = "content"
+
+                elif item.type == "tool_input":
+                    # Stop thinking status if it's running
+                    if thinking_status:
+                        thinking_status.stop()
+                        thinking_status = None
+
+                    # End current Live content if active
+                    if current_live_content:
+                        current_live_content.stop()
+                        current_live_content = None
+
+                    # Display tool input panel immediately
+                    panel = create_tool_input_panel(
+                        item.tool_name,  # type: ignore
+                        item.arguments,  # type: ignore
+                    )
+                    console.print(panel)
+
+                    last_item_type = "tool_input"
+
+                elif item.type == "tool_result":
+                    # Stop thinking status if it's running
+                    if thinking_status:
+                        thinking_status.stop()
+                        thinking_status = None
+
+                    # End current Live content if active
+                    if current_live_content:
+                        current_live_content.stop()
+                        current_live_content = None
+
+                    # Display tool result panel immediately
+                    panel = create_tool_result_panel(
+                        item.tool_name,  # type: ignore
+                        item.result,  # type: ignore
+                    )
+                    console.print(panel)
+
+                    # Start thinking status for next LLM response
+                    thinking_status = console.status("🤔 Thinking...", spinner="dots")
+                    thinking_status.start()
+
+                    last_item_type = "tool_result"
+
+                elif item.type == "tool_error":
+                    # Stop thinking status if it's running
+                    if thinking_status:
+                        thinking_status.stop()
+                        thinking_status = None
+
+                    # End current Live content if active
+                    if current_live_content:
+                        current_live_content.stop()
+                        current_live_content = None
+
+                    # Display tool error panel immediately
+                    panel = create_error_panel(item.content, "Tool Error")  # type: ignore
+                    console.print(panel)
+
+                    last_item_type = "tool_error"
+
+                elif item.type == "error":
+                    # Stop thinking status if it's running
+                    if thinking_status:
+                        thinking_status.stop()
+                        thinking_status = None
+
+                    # End current Live content if active
+                    if current_live_content:
+                        current_live_content.stop()
+                        current_live_content = None
+
+                    # Display general error panel immediately
+                    panel = create_error_panel(item.content, "Error")  # type: ignore
+                    console.print(panel)
+
+                    last_item_type = "error"
+
+                elif item.type == "status":
+                    # Stop thinking status if it's running
+                    if thinking_status:
+                        thinking_status.stop()
+                        thinking_status = None
+
+                    # End current Live content if active
+                    if current_live_content:
+                        current_live_content.stop()
+                        current_live_content = None
+
+                    # Display status panel immediately
+                    panel = create_status_panel(item.content)  # type: ignore
+                    console.print(panel)
+
+                    last_item_type = "status"
+
+            else:
+                # Fallback for backward compatibility
+                if hasattr(item, "content"):
+                    # Stop thinking status if it's running
+                    if thinking_status:
+                        thinking_status.stop()
+                        thinking_status = None
+
+                    # Clear content only if item type changed
+                    if last_item_type != "content":
+                        current_content_parts = []
+
+                    current_content_parts.append(item.content)
+                    combined_content = "".join(current_content_parts)
+
+                    if current_live_content is None:
+                        content_panel = create_content_panel(combined_content)
+                        current_live_content = Live(
+                            content_panel, console=console, refresh_per_second=10
+                        )
+                        current_live_content.start()
+                    else:
+                        content_panel = create_content_panel(combined_content)
+                        current_live_content.update(content_panel)
+
+                    last_item_type = "content"
+
+    finally:
+        # Clean up thinking status and Live display if still active
+        if thinking_status:
+            thinking_status.stop()
+        if current_live_content:
+            current_live_content.stop()
+
+
 def version_callback(value: bool) -> None:
     """Show version and exit."""
     if value:
@@ -168,107 +342,7 @@ async def run_agent_query(config: YgentsConfig, query: str) -> None:
             console.print(f"🤔 **Query:** {query}")
             console.print()
 
-            # Variables for tracking current state
-            current_content_parts: List[str] = []
-            current_live_content: Optional[Live] = None
-            last_item_type: Optional[str] = None
-
-            async for item in agent.run(query):
-                if hasattr(item, "type"):
-                    if item.type == "content":
-                        # Handle streaming content with Live
-                        # Clear content only if item type changed
-                        if last_item_type != "content":
-                            current_content_parts = []
-
-                        current_content_parts.append(item.content)  # type: ignore
-                        combined_content = "".join(current_content_parts)
-
-                        if current_live_content is None:
-                            # Start new Live display for content
-                            content_panel = create_content_panel(combined_content)
-                            current_live_content = Live(
-                                content_panel, console=console, refresh_per_second=10
-                            )
-                            current_live_content.start()
-                        else:
-                            # Update existing Live display
-                            content_panel = create_content_panel(combined_content)
-                            current_live_content.update(content_panel)
-
-                        last_item_type = "content"
-
-                    elif item.type == "tool_input":
-                        # End current Live content if active
-                        if current_live_content:
-                            current_live_content.stop()
-                            current_live_content = None
-
-                        # Display tool input panel immediately
-                        panel = create_tool_input_panel(
-                            item.tool_name,  # type: ignore
-                            item.arguments,  # type: ignore
-                        )
-                        console.print(panel)
-
-                        last_item_type = "tool_input"
-
-                    elif item.type == "tool_result":
-                        # Display tool result panel immediately
-                        panel = create_tool_result_panel(
-                            item.tool_name,  # type: ignore
-                            item.result,  # type: ignore
-                        )
-                        console.print(panel)
-
-                        last_item_type = "tool_result"
-
-                    elif item.type == "tool_error":
-                        # Display tool error panel immediately
-                        panel = create_error_panel(item.content, "Tool Error")  # type: ignore
-                        console.print(panel)
-
-                        last_item_type = "tool_error"
-
-                    elif item.type == "error":
-                        # Display general error panel immediately
-                        panel = create_error_panel(item.content, "Error")  # type: ignore
-                        console.print(panel)
-
-                        last_item_type = "error"
-
-                    elif item.type == "status":
-                        # Display status panel immediately
-                        panel = create_status_panel(item.content)  # type: ignore
-                        console.print(panel)
-
-                        last_item_type = "status"
-
-                else:
-                    # Fallback for backward compatibility
-                    if hasattr(item, "content"):
-                        # Clear content only if item type changed
-                        if last_item_type != "content":
-                            current_content_parts = []
-
-                        current_content_parts.append(item.content)
-                        combined_content = "".join(current_content_parts)
-
-                        if current_live_content is None:
-                            content_panel = create_content_panel(combined_content)
-                            current_live_content = Live(
-                                content_panel, console=console, refresh_per_second=10
-                            )
-                            current_live_content.start()
-                        else:
-                            content_panel = create_content_panel(combined_content)
-                            current_live_content.update(content_panel)
-
-                        last_item_type = "content"
-
-            # Clean up Live display if still active
-            if current_live_content:
-                current_live_content.stop()
+            await process_agent_items(agent, query)
 
     except AgentError as e:
         console.print(f"❌ Agent error: {e}", style="red")
@@ -365,111 +439,7 @@ async def interactive_loop(config: YgentsConfig) -> None:
 
                 console.print()
 
-                # Variables for tracking current state
-                current_content_parts: List[str] = []
-                current_live_content: Optional[Live] = None
-                last_item_type: Optional[str] = None
-
-                async for item in agent.run(query):
-                    if hasattr(item, "type"):
-                        if item.type == "content":
-                            # Handle streaming content with Live
-                            # Clear content only if item type changed
-                            if last_item_type != "content":
-                                current_content_parts = []
-
-                            current_content_parts.append(item.content)  # type: ignore
-                            combined_content = "".join(current_content_parts)
-
-                            if current_live_content is None:
-                                # Start new Live display for content
-                                content_panel = create_content_panel(combined_content)
-                                current_live_content = Live(
-                                    content_panel,
-                                    console=console,
-                                    refresh_per_second=10,
-                                )
-                                current_live_content.start()
-                            else:
-                                # Update existing Live display
-                                content_panel = create_content_panel(combined_content)
-                                current_live_content.update(content_panel)
-
-                            last_item_type = "content"
-
-                        elif item.type == "tool_input":
-                            # End current Live content if active
-                            if current_live_content:
-                                current_live_content.stop()
-                                current_live_content = None
-
-                            # Display tool input panel immediately
-                            panel = create_tool_input_panel(
-                                item.tool_name,  # type: ignore
-                                item.arguments,  # type: ignore
-                            )
-                            console.print(panel)
-
-                            last_item_type = "tool_input"
-
-                        elif item.type == "tool_result":
-                            # Display tool result panel immediately
-                            panel = create_tool_result_panel(
-                                item.tool_name,  # type: ignore
-                                item.result,  # type: ignore
-                            )
-                            console.print(panel)
-
-                            last_item_type = "tool_result"
-
-                        elif item.type == "tool_error":
-                            # Display tool error panel immediately
-                            panel = create_error_panel(item.content, "Tool Error")  # type: ignore
-                            console.print(panel)
-
-                            last_item_type = "tool_error"
-
-                        elif item.type == "error":
-                            # Display general error panel immediately
-                            panel = create_error_panel(item.content, "Error")  # type: ignore
-                            console.print(panel)
-
-                            last_item_type = "error"
-
-                        elif item.type == "status":
-                            # Display status panel immediately
-                            panel = create_status_panel(item.content)  # type: ignore
-                            console.print(panel)
-
-                            last_item_type = "status"
-
-                    else:
-                        # Fallback for backward compatibility
-                        if hasattr(item, "content"):
-                            # Clear content only if item type changed
-                            if last_item_type != "content":
-                                current_content_parts = []
-
-                            current_content_parts.append(item.content)
-                            combined_content = "".join(current_content_parts)
-
-                            if current_live_content is None:
-                                content_panel = create_content_panel(combined_content)
-                                current_live_content = Live(
-                                    content_panel,
-                                    console=console,
-                                    refresh_per_second=10,
-                                )
-                                current_live_content.start()
-                            else:
-                                content_panel = create_content_panel(combined_content)
-                                current_live_content.update(content_panel)
-
-                            last_item_type = "content"
-
-                # Clean up Live display if still active
-                if current_live_content:
-                    current_live_content.stop()
+                await process_agent_items(agent, query)
 
             except EOFError:
                 console.print("\n👋 Goodbye!", style="blue")
