@@ -53,7 +53,7 @@ def create_content_panel(content: str) -> Panel:
         title="🤖 Response",
         border_style="blue",
         padding=(1, 1),
-        expand=False,
+        expand=True,
     )
 
 
@@ -69,7 +69,7 @@ def create_tool_input_panel(tool_name: str, arguments: Dict[str, Any]) -> Panel:
         title="🔧 Tool Input",
         border_style="yellow",
         padding=(1, 1),
-        expand=False,
+        expand=True,
     )
 
 
@@ -85,7 +85,7 @@ def create_tool_result_panel(tool_name: str, result: Any) -> Panel:
         title="✅ Tool Result",
         border_style="green",
         padding=(1, 1),
-        expand=False,
+        expand=True,
     )
 
 
@@ -96,7 +96,7 @@ def create_error_panel(error_content: str, error_type: str = "Error") -> Panel:
         title=f"❌ {error_type}",
         border_style="red",
         padding=(1, 1),
-        expand=False,
+        expand=True,
     )
 
 
@@ -107,7 +107,7 @@ def create_status_panel(status_content: str) -> Panel:
         title="📊 Status",
         border_style="cyan",
         padding=(1, 1),
-        expand=False,
+        expand=True,
     )
 
 
@@ -354,9 +354,7 @@ async def interactive_loop(config: YgentsConfig) -> None:
     async with Agent(config) as agent:
         while True:
             try:
-                query = Prompt.ask(
-                    "\n[bold blue]❓ Your question[/bold blue]", console=console
-                )
+                query = Prompt.ask("\n[bold red] >[/bold red]", console=console)
 
                 if query.lower() in ["exit", "quit", "q"]:
                     console.print("👋 Goodbye!", style="blue")
